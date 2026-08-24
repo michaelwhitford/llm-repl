@@ -47,8 +47,16 @@ restore on exit.
   sequential on purpose (slot contention). Ratified use cases: branch-any-turn
   / A/B-from-parent / progressive-improvement — merge DROPPED from roadmap
   (no use case needs it; distill-via-chat-memory noted as the design if ever).
-  Still queued: pathom resolvers (3c), TUI tree/compare panes (3d), AI
-  operator-manual layer (compiled from ns-publics; curated via ^:manual meta).
+- ✅ TREE PANE (human-ratified "looks better"): two-pane ≥70 cols — LEFT ≡
+  fork forest (glyphs, short arm names, @branch-points, current highlighted,
+  windowed) with an EVENT FOOTER (last 3, dim, receipt-length — "ab! :s 3✓");
+  RIGHT ≡ tape, conversation-only (events structurally out of tape-lines).
+  Tab walks DFS tree order — movement on screen ≡ movement in the tree.
+  Design rule learned: events ≡ global UI chrome, NEVER tape content;
+  receipts point INTO the tree, payloads live AT the nodes.
+  Still queued: compare pane (children side-by-side, config deltas), pathom
+  resolvers (3c), AI operator-manual layer (compiled from ns-publics;
+  curated via ^:manual meta).
 
 ## Invariants worth not rediscovering
 
