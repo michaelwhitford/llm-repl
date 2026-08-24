@@ -102,6 +102,59 @@
   (let [model (get-in reg [slug :config :model])]
     (str "llm-repl · " slug " · " model " · nREPL :" nrepl-port)))
 
+;; ── pure: the fork tree (left pane) ───────────────────────────────────────────
+
+(defn- children-of
+  "Children of `slug`, ordered by branch point then name — the fork tree's
+   edges, inverted from :forked-from/:forked-at."
+  [reg slug]
+  (->> reg
+       (filter (fn [[_ s]] (= slug (:forked-from s))))
+       (sort-by (fn [[k s]] [(or (:forked-at s) 0) (str k)]))
+       (map key)))
+
+(defn dfs-order
+  "Every session in depth-first tree order (roots sorted by name) — the order
+   tab-cycling walks, so MOVEMENT ON SCREEN ≡ movement in the tree."
+  [reg]
+  (let [roots (->> reg (remove (fn [[_ s]] (:forked-from s))) (map key) (sort-by str))
+        walk  (fn walk [slug]
+                (cons slug (mapcat walk (children-of reg slug))))]
+    (vec (mapcat walk roots))))
+
+(defn- short-name
+  "Child display name: strip the `parent-` prefix ab! children carry
+   (scratch-nucleus under scratch → nucleus)."
+  [slug parent]
+  (let [n (name slug)
+        p (some-> parent name (str "-"))]
+    (if (and p (str/starts-with? n p) (> (count n) (count p)))
+      (subs n (count p))
+      n)))
+
+(defn tree-lines
+  "The fork forest as glyph-drawn lines for the tree pane; `current`
+   highlighted (reverse video). Node ≡ name·depth, edge ≡ @branch-point."
+  [reg current theme w]
+  (let [walk (fn walk [slug parent prefix last?]
+               (let [s     (get reg slug)
+                     label (str (short-name slug parent)
+                                "·" (count (:tape s))
+                                (when (:forked-at s) (str " @" (:forked-at s))))
+                     conn  (cond (nil? parent) "" last? "└ " :else "├ ")
+                     line  (str prefix conn
+                                (if (= slug current)
+                                  (str cmp/reverse-on-s " " label " " theme/reset-attrs-s)
+                                  label))
+                     kids  (vec (children-of reg slug))
+                     kid-prefix (str prefix (cond (nil? parent) "" last? "  " :else "│ "))]
+                 (into [(cmp/truncate-display line w)]
+                       (mapcat (fn [i k]
+                                 (walk k slug kid-prefix (= i (dec (count kids)))))
+                               (range (count kids)) kids))))
+        roots (->> reg (remove (fn [[_ s]] (:forked-from s))) (map key) (sort-by str))]
+    (vec (mapcat #(walk % nil "" true) roots))))
+
 (defn sessions-line
   "The registry index strip: every tape as slug·depth (↰parent when forked),
    current session in reverse video."
@@ -137,31 +190,55 @@
 
 ;; ── pure: the frame ───────────────────────────────────────────────────────────
 
+(def tree-pane-w
+  "Left tree-pane width (borders incl). Below `two-pane-threshold` total
+   columns the layout falls back to single-pane ⊕ sessions strip."
+  26)
+
+(def two-pane-threshold 70)
+
 (defn frame
   "The WHOLE screen as one ANSI string ⊕ caret position — a pure function of
-   (registry-snapshot ⊕ ui-state ⊕ theme ⊕ term-w/h). The impl half only
-   emits this; headless tests assert on it directly."
+   (registry-snapshot ⊕ ui-state ⊕ theme ⊕ term-w/h). Wide ≥70 cols: left
+   tree pane (the map you move on — tab walks DFS, the highlight follows) ⊕
+   right tape pane (where you are). Narrow: single pane ⊕ sessions strip.
+   The impl half only emits this; headless tests assert on it directly."
   [reg {:keys [slug scroll events pending input] :as state} theme term-w term-h]
-  (let [box-h   (max 4 (- term-h 2))
-        inner-w (- term-w 2)
+  (let [two?    (>= term-w two-pane-threshold)
+        box-h   (max 4 (- term-h (if two? 1 2)))
         inner-h (- box-h 2)
+        tree-w  (if two? tree-pane-w 0)
+        tape-w  (- term-w tree-w)
         tape    (get-in reg [slug :tape])
-        lines   (tape-lines tape events (some? pending) theme inner-w)
+        lines   (tape-lines tape events (some? pending) theme (- tape-w 2))
         {:keys [lines scroll]} (visible-window lines inner-h scroll)
-        buf     (StringBuilder.)
-        _       (cmp/draw-box buf {:row 1 :col 1 :w term-w :h box-h
-                                   :title (title-line state reg)
-                                   :scroll scroll
-                                   :theme theme
-                                   :body-lines (vec lines)})
-        _       (.append buf (cmp/move-to-s (inc box-h) 1))
-        _       (.append buf (cmp/truncate-display (sessions-line reg slug theme term-w) term-w))
-        il      (input-line state reg input term-w)
-        _       (.append buf (cmp/move-to-s (+ box-h 2) 1))
-        _       (.append buf (:text il))]
-    {:s          (str buf)
-     :cursor-row (+ box-h 2)
-     :cursor-col (:cursor-col il)}))
+        buf     (StringBuilder.)]
+    (when two?
+      (let [tl (tree-lines reg slug theme (- tree-w 2))
+            ;; window the tree around the CURRENT node (the reverse-video line)
+            ci (max 0 (.indexOf ^java.util.List
+                                (mapv #(str/includes? % cmp/reverse-on-s) tl) true))
+            tl (if (> (count tl) inner-h)
+                 (let [start (max 0 (min (- (count tl) inner-h) (- ci (quot inner-h 2))))]
+                   (subvec tl start (min (count tl) (+ start inner-h))))
+                 tl)]
+        (cmp/draw-box buf {:row 1 :col 1 :w tree-w :h box-h
+                           :title "tree" :theme theme :body-lines tl})))
+    (cmp/draw-box buf {:row 1 :col (inc tree-w) :w tape-w :h box-h
+                       :title (title-line state reg)
+                       :scroll scroll
+                       :theme theme
+                       :body-lines (vec lines)})
+    (when-not two?
+      (.append buf (cmp/move-to-s (inc box-h) 1))
+      (.append buf (cmp/truncate-display (sessions-line reg slug theme term-w) term-w)))
+    (let [input-row (+ box-h (if two? 1 2))
+          il        (input-line state reg input term-w)]
+      (.append buf (cmp/move-to-s input-row 1))
+      (.append buf (:text il))
+      {:s          (str buf)
+       :cursor-row input-row
+       :cursor-col (:cursor-col il)})))
 
 ;; ── pure: byte→logical-key decoder ────────────────────────────────────────────
 
@@ -353,11 +430,11 @@
     (when on-stop (try (on-stop) (catch Throwable _ nil)))))
 
 (defn cycle-slug!
-  "Point the TUI at the next registry session (sorted order, wraps). Opens
-   nothing — cycles over what exists."
+  "Point the TUI at the next session in DFS TREE order (wraps) — tab movement
+   tracks the tree pane's shape, so cycling FEELS like walking the tree."
   [state]
   (swap! state (fn [{:keys [registry slug] :as s}]
-                 (let [slugs (vec (sort-by str (keys @registry)))
+                 (let [slugs (dfs-order @registry)
                        i     (.indexOf ^clojure.lang.PersistentVector slugs slug)
                        slug' (if (seq slugs)
                                (nth slugs (mod (inc i) (count slugs)))

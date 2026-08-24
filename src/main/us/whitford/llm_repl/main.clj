@@ -138,6 +138,24 @@
                      (update :events #(vec (take-last 200 (conj % line))))
                      (assoc :render-dirty true)))))
 
+(defn- ellipsize [s n]
+  (let [s (str/replace (str s) #"\s+" " ")]
+    (if (> (count s) n) (str (subs s 0 n) "…") s)))
+
+(defn- result-events
+  "A form result → compact event lines. The FULL result lives in the tape
+   tree (arms are sessions — tab to them); events are the one-line index of
+   what happened, not the payload. An ab! variants map gets one line per arm."
+  [res]
+  (if (and (map? res) (:repl/variants res))
+    (into [(str "=> ab! " (:repl/id res) " · " (count (:repl/variants res)) " arms"
+                " · probe: " (ellipsize (:repl/probe res) 40))]
+          (map (fn [[vk r]]
+                 (str "   " (name vk) " → "
+                      (ellipsize (or (:repl/reply r) (:repl/error r) (pr-str r)) 70))))
+          (sort-by (comp str key) (:repl/variants res)))
+    [(str "=> " (ellipsize (pr-str res) 120))]))
+
 (defn- tui-submit!
   "The submission dispatch — same grammar as the plain loop, but every branch
    runs on a WORKER thread so the UI stays live (pending marker meanwhile;
@@ -146,10 +164,10 @@
   (let [state (:state h)]
     (if (str/starts-with? text "(")
       (future
-        (let [res (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
-                         (pr-str (eval (read-string text))))
-                       (catch Throwable t (str "error: " (ex-message t))))]
-          (push-event! state (str "=> " res))))
+        (let [evs (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
+                         (result-events (eval (read-string text))))
+                       (catch Throwable t [(str "error: " (ex-message t))]))]
+          (doseq [e evs] (push-event! state e))))
       (let [slug (:slug @state)]
         (swap! state assoc :pending slug :render-dirty true)
         (future
