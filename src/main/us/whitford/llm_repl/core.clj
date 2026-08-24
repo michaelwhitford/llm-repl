@@ -204,7 +204,8 @@
            :preamble?   (get-in s [:config :preamble?])
            :depth       (count (:tape s))
            :turns       (:turns s)
-           :forked-from (:forked-from s)})
+           :forked-from (:forked-from s)
+           :forked-at   (:forked-at s)})
         @sessions*))
 
 (defn drop!
@@ -360,9 +361,42 @@
        (let [copy (-> src
                       (assoc :slug to :forked-from from :created-at (System/currentTimeMillis))
                       (update :config merge (select-keys opts config-keys))
-                      (cond-> (:at opts) (update :tape #(vec (take (:at opts) %)))))]
+                      (cond-> (:at opts) (update :tape #(vec (take (:at opts) %)))))
+             ;; the BRANCH POINT — the tree edge is (from @ forked-at → to);
+             ;; without it an :at fork's edge is lossy (tree views need it)
+             copy (assoc copy :forked-at (count (:tape copy)))]
          (store! to copy)
          {:repl/id     to
           :repl/from   from
           :repl/depth  (count (:tape copy))
           :repl/config (:config copy)})))))
+
+(defn ab!
+  "Fan ONE probe across VARIED interpreters from a common parent — the DUAL of
+   trampoline! (which fans varied inputs off one interpreter). ∀variant:
+   fork!(from → from-variant, config overrides ⊕ :at) → eval!(probe). The
+   parent never moves; the variants differ ONLY by their overrides — an N-arm
+   counterfactual (the preamble/system/model/temperature is the isolated
+   variable). Unlike trampoline!'s discarded bounces, the children PERSIST:
+   named, comparable, re-drivable — continue any arm, fork the winner, fan
+   again (progressive improvement; the tree is the experiment record).
+
+   `variants` ≡ {variant-kw config-overrides}; child slug ≡ from-variant.
+   opts: :at (branch an older turn) ⊕ :complete-fn (test seam, forwarded).
+   Sequential on purpose (local servers contend on slots; determinism > speed).
+   Per-variant errors as data — one failed arm doesn't sink the fan. Returns
+   {:repl/id :repl/probe :repl/variants {vk fork-error | eval-result}}.
+   (STANDALONE accretion #2 — not in anima.)"
+  ([from variants probe] (ab! from variants probe {}))
+  ([from variants probe opts]
+   {:repl/id    from
+    :repl/probe probe
+    :repl/variants
+    (into {}
+          (map (fn [[vk overrides]]
+                 (let [to     (keyword (str (name from) "-" (name vk)))
+                       forked (fork! from to (merge overrides (select-keys opts [:at])))]
+                   [vk (if (:repl/error forked)
+                         forked
+                         (eval! to probe (select-keys opts [:complete-fn])))])))
+          variants)}))

@@ -107,9 +107,11 @@
    current session in reverse video."
   [reg current theme w]
   (->> (sort-by (comp str key) reg)
-       (map (fn [[slug {:keys [tape forked-from]}]]
+       (map (fn [[slug {:keys [tape forked-from forked-at]}]]
               (let [cell (str (name slug) "·" (count tape)
-                              (when forked-from (str "↰" (name forked-from))))]
+                              (when forked-from
+                                (str "↰" (name forked-from)
+                                     (when forked-at (str "@" forked-at)))))]
                 (if (= slug current)
                   (str cmp/reverse-on-s " " cell " " theme/reset-attrs-s)
                   (str " " cell " ")))))

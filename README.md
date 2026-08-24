@@ -38,6 +38,10 @@ contract — TUI palette, nREPL, and a future MCP facade all enumerate it):
 (eval! :my-session "hello")    ; commit ONE turn (tape advances)
 (fork! :my-session :variant)   ; copy tape+config — counterfactuals are cheap
 (fork! :my-session :redo {:at 2}) ; branch an OLDER turn (first 2 messages)
+(ab! :my-session                  ; N-arm counterfactual from a common parent:
+     {:a {:system "Be terse."}    ;   fork per variant (children PERSIST as
+      :b {:model :gemma-4-31b-it}};   my-session-a, my-session-b), same probe
+     "the probe" {:at 4})         ;   on each — replies differ ONLY by config
 (bounce! :my-session "probe")  ; one completion off the FIXED tape (unchanged)
 (trampoline! :my-session [...]); fan varied inputs off the fixed point
 (run-battery! :my-session [..]); fold a probe sequence (tape advances)
