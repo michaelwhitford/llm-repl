@@ -40,6 +40,15 @@ restore on exit.
   (truncate the copy to first N messages ≡ the prompt's depth number).
   Additive: :at-less calls ≡ anima behavior; docstring marks the split.
   Human-verified: past-point forks give good outputs (KV prefix reuse).
+- ✅ Increment 3 (first tranche): `:forked-at` recorded on every fork (tree
+  edges complete — strip shows ↰parent@depth) ⊕ `ab!` (accretion #2): fan ONE
+  probe across VARIED configs from a common parent — dual of trampoline!;
+  children persist (named/comparable/re-drivable); per-arm errors as data;
+  sequential on purpose (slot contention). Ratified use cases: branch-any-turn
+  / A/B-from-parent / progressive-improvement — merge DROPPED from roadmap
+  (no use case needs it; distill-via-chat-memory noted as the design if ever).
+  Still queued: pathom resolvers (3c), TUI tree/compare panes (3d), AI
+  operator-manual layer (compiled from ns-publics; curated via ^:manual meta).
 
 ## Invariants worth not rediscovering
 
