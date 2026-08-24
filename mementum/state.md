@@ -19,7 +19,10 @@ Gen-1 was a Python repl attached TO a model; gen-2 inverts: clients attach to IT
 
 ## Now
 
-**Increment 2 (TUI) in flight.** Increment 1 DONE + live-verified at `7a79bae`.
+**Increments 1 ∧ 2 DONE, live-verified.** Inc 1 at `7a79bae`; inc 2 (TUI)
+human-verified in a real terminal: chat, tab-cycle, multi-line paste as ONE
+turn, attached-client evals appearing live (registry watch → ≤33ms), clean
+restore on exit.
 
 - ✅ Increment 1: extraction. chat-memory + llamacpp backend + core ported
   verbatim; roster.clj replaces anima's llm.clj surface (config-file roster,
@@ -27,15 +30,16 @@ Gen-1 was a Python repl attached TO a model; gen-2 inverts: clients attach to IT
   `:complete-fn`). Launcher: nREPL first (`.nrepl-port`), plain prompt loop.
   VERIFIED: terminal ∧ attached nREPL client both round-trip qwen :5100;
   fork isolation proven live (parent depth 2 frozen, child advanced to 4).
-- 🔄 Increment 2: TUI on escapement's pure primitives (theme/compositor —
-  direct requires; ticker + key-decoder patterns copied; see
-  `knowledge/upstream/escapement.md` for the full map + λ contracts).
-  - done: `tui.clj` render half — pure `frame` (purity seam: headless-testable),
-    state atom, 33ms dirty-ticker, alt-screen/signal/shutdown lifecycle,
-    bracketed-paste escapes reserved.
-  - next: input half (decoder + line editor + history + paste) → wire
-    (registry add-watch, worker-thread eval!, form eval) → main integration
-    (interactive→TUI, `--plain`, `--headless`) → live verify → commit.
+- ✅ Increment 2: TUI (`tui.clj` ⊕ `main.clj` wire) on escapement's pure
+  primitives (theme/compositor — direct requires; ticker + key-decoder
+  patterns copied; see `knowledge/upstream/escapement.md`). Purity seam:
+  frame ∧ key-from-bytes ∧ edit-step all headless-tested. Worker-thread
+  evals (UI live during completion — plain loop blocks, TUI doesn't).
+  Surface selection: interactive→TUI | --plain | --headless.
+- ✅ FIRST STANDALONE ACCRETION: `fork! {:at N}` — branch an OLDER turn
+  (truncate the copy to first N messages ≡ the prompt's depth number).
+  Additive: :at-less calls ≡ anima behavior; docstring marks the split.
+  Human-verified: past-point forks give good outputs (KV prefix reuse).
 
 ## Invariants worth not rediscovering
 
@@ -50,8 +54,7 @@ Gen-1 was a Python repl attached TO a model; gen-2 inverts: clients attach to IT
 
 ## Queue (rough order)
 
-1. Finish increment 2 (see Now).
-2. `:bbin/bin` entry → `llm-repl` on PATH.
+1. `:bbin/bin` entry → `llm-repl` on PATH.
 3. Tape persistence (registry → disk; tree survives restart).
 4. Split-pane tape view (watch a second session live).
 5. MCP facade over the same command ns-publics.
