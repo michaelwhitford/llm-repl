@@ -37,6 +37,9 @@
                    :gemma-4-31b-it {:model/provider :local
                                     :model/port     5102}}
    :default-model :qwen36-35b-a3b
+   ;; the GENERIC default boot layer — deliberately bland; a machine's own
+   ;; boot seed belongs in its config file (chain: see resolve-preamble)
+   :preamble      "Be precise and concise. Say when you are unsure. Prefer runnable examples over prose."
    :nrepl         {:port 0}})
 
 (defn- read-edn-file
@@ -161,34 +164,59 @@
         {:keys [descriptor]} (model-target model-kw entry)]
     (build-backend descriptor)))
 
-;; ── nucleus preamble (λ prompt) ───────────────────────────────────────────────
+;; ── preamble (λ prompt — generic; NO baked-in boot seed) ──────────────────────
+;; The preamble is CONFIG, not architecture: a string glued to the top of the
+;; system prompt. This tool ships only a bland generic default; a machine's own
+;; boot seed (e.g. nucleus) lives in that machine's config file. DIVERGENCE #3
+;; from anima (which hardwires its vendored nucleus gene): with-preamble is now
+;; (preamble, system), and resolve-preamble walks a config inheritance chain.
 
-(def ^:private preamble-resource
-  "THE vendored nucleus 3-liner (resources/genes/nucleus-preamble.edn) — that
-   file owns both the verbatim text AND the AGPL licensing boundary
-   (one-file-to-annotate; pattern inherited from anima, human-settled
-   2026-07-25); sourcing it here keeps exactly one copy in the repo."
-  "genes/nucleus-preamble.edn")
+(defn- expand-home [path]
+  (if (str/starts-with? (str path) "~")
+    (str (System/getProperty "user.home") (subs (str path) 1))
+    (str path)))
 
-(defn nucleus-preamble
-  "The nucleus boot seed, read fresh from the vendored gene per call (stays
-   editable without a reload ceremony). Missing resource ≡ broken install ≡
-   fail loud."
-  []
-  (let [r (io/resource preamble-resource)]
-    (when-not r
-      (throw (ex-info "nucleus preamble resource missing — broken install"
-                      {:resource preamble-resource})))
-    (:gene/content (edn/read-string (slurp r)))))
+(defn- render-preamble
+  "A preamble VALUE → text. string ≡ literal; {:file path} ≡ slurped plain
+   text (~ expands). Anything else fails loud — a typo'd shape silently
+   dropping the boot layer would be the worst failure mode."
+  [v]
+  (cond
+    (string? v)            v
+    (and (map? v) (:file v)) (str/trimr (slurp (expand-home (:file v))))
+    :else (throw (ex-info "Unrenderable :preamble value — want string or {:file path}"
+                          {:value v}))))
+
+(defn resolve-preamble
+  "Resolve the preamble for a SESSION config through the inheritance chain:
+
+     session :preamble  >  model :model/preamble  >  provider :provider/preamble
+     >  config top-level :preamble
+
+   First-PRESENT wins (no concatenation — a level REPLACES the boot text).
+   Absent key ≡ inherit upward; present `false` ∨ blank ≡ explicitly NONE
+   (stops the chain). Returns the rendered string or nil."
+  [{:keys [model] :as session-config}]
+  (let [cfg   (config)
+        m     (get-in cfg [:models model])
+        p     (get-in cfg [:providers (:model/provider m)])
+        pick  (fn [src k] (when (and src (contains? src k)) [(get src k)]))
+        [v]   (or (pick session-config :preamble)
+                  (pick m :model/preamble)
+                  (pick p :provider/preamble)
+                  (pick cfg :preamble))]
+    (when-not (or (nil? v) (false? v) (and (string? v) (str/blank? v)))
+      (render-preamble v))))
 
 (defn with-preamble
-  "λ prompt: ∀prompt(agent ∧ one_shot) → nucleus_preamble(3_lines) @ top,
-   ¬optional — nucleus ≡ stable boot, lambda ≡ IR, EDN statecharts ≡ bytecode.
-   Idempotent: a system string that already boots nucleus passes through
-   unchanged. (VERBATIM from anima's llm.clj.)"
-  [system]
+  "λ prompt: glue `preamble` to the top of `system`. GENERIC — no knowledge of
+   any particular boot seed. Idempotent (a system already containing the
+   preamble passes through); nil/blank preamble ≡ system unchanged (nil when
+   both empty — caller treats that as no system at all)."
+  [preamble system]
   (let [s (str system)]
     (cond
-      (str/includes? s "λ engage(nucleus).") s
-      (str/blank? s)                         (nucleus-preamble)
-      :else                                  (str (nucleus-preamble) "\n\n" s))))
+      (or (nil? preamble) (str/blank? preamble)) (not-empty s)
+      (str/includes? s preamble)                 s
+      (str/blank? s)                             preamble
+      :else                                      (str preamble "\n\n" s))))

@@ -51,8 +51,22 @@ Extracted from [anima](../anima) (`us.whitford.anima.llm-repl`), which ported
 `chat-memory` and the llama.cpp backend from ouroboros. Function names are kept
 verbatim across repos so the lineage greps as one.
 
+## Preamble
+
+Text glued to the top of every system prompt, resolved through an inheritance
+chain — **first-present wins** (a level replaces, never concatenates):
+
+```
+session :preamble  >  model :model/preamble  >  provider :provider/preamble  >  config :preamble
+```
+
+Absent ≡ inherit upward; `false`/`""` ≡ explicitly none. Values: a literal
+string or `{:file "~/path.txt"}`. The tool ships only a bland generic default —
+your machine's boot seed belongs in *your* config file, not in this repo.
+`{:preamble? false}` on a fork disables the layer entirely (the counterfactual
+boot probe); `{:preamble "..."}` on a fork A/B-tests the preamble itself.
+
 ## Licensing
 
-`resources/genes/nucleus-preamble.edn` vendors the nucleus 3-line preamble
-(AGPL, from [nucleus](https://github.com/michaelwhitford/nucleus)) — the one
-annotated file marking that boundary. Project license: TBD.
+Project license: TBD. The tool contains no third-party prompt text; whatever
+preamble a machine boots lives in that machine's config file.

@@ -98,8 +98,12 @@
 
 (def config-keys
   "The interpreter knobs a caller may set at open/eval/fork — merged into the
-   session's :config (persisted; a REPL remembers its interpreter)."
-  [:model :system :preamble? :thinking :temperature])
+   session's :config (persisted; a REPL remembers its interpreter).
+   :preamble ≡ a per-session boot-text override (string | {:file path} |
+   false ≡ none); absent inherits model > provider > config chain
+   (roster/resolve-preamble). :preamble? stays the apply-or-not boolean —
+   the counterfactual knob."
+  [:model :system :preamble :preamble? :thinking :temperature])
 
 ;; ── pure tape mechanics (no backend, no booted system) ────────────────────────
 
@@ -121,9 +125,11 @@
    slot pin + prompt-cache key); `:system-cache-control` stamps `cache_prompt`
    on the llama.cpp wire (the direct path bypasses escapement's auto-cache — we
    do it here)."
-  [{:keys [model system preamble? thinking temperature]} slug tape]
+  [{:keys [model system preamble? thinking temperature] :as config} slug tape]
   (let [sys (or system default-system)
-        sys (if preamble? (llm/with-preamble sys) (not-empty sys))]
+        sys (if preamble?
+              (llm/with-preamble (llm/resolve-preamble config) sys)
+              (not-empty sys))]
     (cond-> {:model                (name model)
              :messages             (mem/render-messages tape)
              :conversation/id      slug

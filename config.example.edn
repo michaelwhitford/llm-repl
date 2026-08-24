@@ -29,6 +29,20 @@
           :gpt-5.4        {:model/provider :openai}
           :gpt-5.5        {:model/provider :openai}}
 
+ ;; ── preamble ── text glued to the TOP of every system prompt (λ prompt).
+ ;; Inheritance chain, first-present wins (REPLACES, never concatenates):
+ ;;   session :preamble > model :model/preamble > provider :provider/preamble
+ ;;   > this top-level :preamble
+ ;; Absent key ≡ inherit upward. Present false ∨ "" ≡ explicitly none.
+ ;; Values: "literal string" | {:file "~/path/to/preamble.txt"} (plain text).
+ ;; Put your machine's own boot seed here — the tool ships only a bland
+ ;; generic default. Per-session: (open! :s {:preamble "..."}) — and
+ ;; {:preamble? false} on a fork still disables the layer entirely
+ ;; (the counterfactual boot probe).
+ :preamble "Be precise and concise. Say when you are unsure. Prefer runnable examples over prose."
+ ;; :providers {:local {:provider/preamble "…all local models boot with this…"}}
+ ;; :models    {:qwen36-35b-a3b {:model/preamble {:file "~/.config/llm-repl/qwen-boot.txt"}}}
+
  ;; ── defaults ── the interpreter config an unqualified (open!) session runs;
  ;; every knob overridable per session and per fork.
  :default-model :qwen36-35b-a3b
