@@ -60,10 +60,11 @@
 (def role-label {:user "you ›" :assistant "  «" :event "  ·"})
 
 (defn tape-lines
-  "Render a tape (canonical messages) ⊕ system events ⊕ pending flag into
-   colored, wrapped body lines for the tape pane. Events (form results,
-   errors) trail the tape; a pending completion shows a thinking marker."
-  [tape events pending? theme w]
+  "Render a tape (canonical messages) ⊕ pending flag into colored, wrapped
+   body lines for the tape pane. Events do NOT belong here — they are global
+   UI chrome (they'd repeat in every session's pane); the tree pane's footer
+   owns them. A pending completion shows a thinking marker."
+  [tape pending? theme w]
   (let [label-w 6
         body-w  (max 8 (- w label-w))
         indent  (apply str (repeat label-w \space))
@@ -80,7 +81,6 @@
                           :assistant (emit (role-label :assistant) "" text)
                           (emit "  ?" theme/debug-color (str text)))))
               tape)
-        (into (mapcat #(emit (role-label :event) theme/debug-color %)) events)
         (cond-> pending?
           (conj (str (theme/sgr-wrap theme/chart-color "  …   ")
                      (theme/paint theme :status/waiting "thinking")))))))
@@ -210,28 +210,46 @@
         tree-w  (if two? tree-pane-w 0)
         tape-w  (- term-w tree-w)
         tape    (get-in reg [slug :tape])
-        lines   (tape-lines tape events (some? pending) theme (- tape-w 2))
+        lines   (tape-lines tape (some? pending) theme (- tape-w 2))
         {:keys [lines scroll]} (visible-window lines inner-h scroll)
         buf     (StringBuilder.)]
     (when two?
-      (let [tl (tree-lines reg slug theme (- tree-w 2))
+      (let [tree-iw (- tree-w 2)
+            ;; footer: the last few events, VERY short (dim, truncated) —
+            ;; an index of what happened, never the payload
+            evs     (mapv #(theme/sgr-wrap theme/debug-color (cmp/truncate-display % tree-iw))
+                          (take-last 3 events))
+            ev-h    (if (seq evs) (inc (count evs)) 0)
+            tree-h  (max 1 (- inner-h ev-h))
+            tl      (tree-lines reg slug theme tree-iw)
             ;; window the tree around the CURRENT node (the reverse-video line)
-            ci (max 0 (.indexOf ^java.util.List
-                                (mapv #(str/includes? % cmp/reverse-on-s) tl) true))
-            tl (if (> (count tl) inner-h)
-                 (let [start (max 0 (min (- (count tl) inner-h) (- ci (quot inner-h 2))))]
-                   (subvec tl start (min (count tl) (+ start inner-h))))
-                 tl)]
+            ci      (max 0 (.indexOf ^java.util.List
+                                     (mapv #(str/includes? % cmp/reverse-on-s) tl) true))
+            tl      (if (> (count tl) tree-h)
+                      (let [start (max 0 (min (- (count tl) tree-h) (- ci (quot tree-h 2))))]
+                        (subvec tl start (min (count tl) (+ start tree-h))))
+                      tl)
+            ;; pad the tree region so the footer PINS to the pane bottom
+            body    (if (seq evs)
+                      (-> (into [] tl)
+                          (into (repeat (- tree-h (count tl)) ""))
+                          (conj (theme/paint theme :border-dim (apply str (repeat tree-iw "·"))))
+                          (into evs))
+                      tl)]
         (cmp/draw-box buf {:row 1 :col 1 :w tree-w :h box-h
-                           :title "tree" :theme theme :body-lines tl})))
+                           :title "tree" :theme theme :body-lines body})))
     (cmp/draw-box buf {:row 1 :col (inc tree-w) :w tape-w :h box-h
                        :title (title-line state reg)
                        :scroll scroll
                        :theme theme
                        :body-lines (vec lines)})
     (when-not two?
-      (.append buf (cmp/move-to-s (inc box-h) 1))
-      (.append buf (cmp/truncate-display (sessions-line reg slug theme term-w) term-w)))
+      (let [ev (when-let [e (last events)] (str "  · " e))
+            sw (- term-w (cmp/display-width (or ev "")))]
+        (.append buf (cmp/move-to-s (inc box-h) 1))
+        (.append buf (sessions-line reg slug theme sw))
+        (when ev
+          (.append buf (theme/sgr-wrap theme/debug-color (cmp/truncate-display ev (- term-w sw)))))))
     (let [input-row (+ box-h (if two? 1 2))
           il        (input-line state reg input term-w)]
       (.append buf (cmp/move-to-s input-row 1))

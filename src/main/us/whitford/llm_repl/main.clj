@@ -143,18 +143,16 @@
     (if (> (count s) n) (str (subs s 0 n) "…") s)))
 
 (defn- result-events
-  "A form result → compact event lines. The FULL result lives in the tape
-   tree (arms are sessions — tab to them); events are the one-line index of
-   what happened, not the payload. An ab! variants map gets one line per arm."
+  "A form result → VERY short event lines (the tree pane's footer is ~24
+   cols). Events are a one-line INDEX of what happened — the payload lives in
+   the tree; arms are sessions, tab to them. ab! ≡ arm count ⊕ error count."
   [res]
   (if (and (map? res) (:repl/variants res))
-    (into [(str "=> ab! " (:repl/id res) " · " (count (:repl/variants res)) " arms"
-                " · probe: " (ellipsize (:repl/probe res) 40))]
-          (map (fn [[vk r]]
-                 (str "   " (name vk) " → "
-                      (ellipsize (or (:repl/reply r) (:repl/error r) (pr-str r)) 70))))
-          (sort-by (comp str key) (:repl/variants res)))
-    [(str "=> " (ellipsize (pr-str res) 120))]))
+    (let [vs   (:repl/variants res)
+          errs (count (filter :repl/error (vals vs)))]
+      [(str "ab! " (:repl/id res) " " (- (count vs) errs) "✓"
+            (when (pos? errs) (str " " errs "✗")))])
+    [(str "=> " (ellipsize (pr-str res) 60))]))
 
 (defn- tui-submit!
   "The submission dispatch — same grammar as the plain loop, but every branch
