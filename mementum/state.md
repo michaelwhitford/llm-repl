@@ -49,8 +49,12 @@ restore on exit.
   bug history).
 - `src/escapement/ui/*` is Fulcro/JVM-only — never require under bb.
 - guardrails stays pinned 1.2.16 transitively — don't override.
-- nucleus preamble ≡ `resources/genes/nucleus-preamble.edn`, the ONE
-  AGPL-annotated file. Project LICENSE still TBD (human decision).
+- NO nucleus (or any boot seed) in the repo — preamble ≡ CONFIG, resolved
+  session > model > provider > config-root (roster/resolve-preamble;
+  absent=inherit, false/blank=explicit none, string|{:file}). Nucleus lives
+  ONLY in ~/.config/llm-repl/config.edn on this machine (the licensing
+  boundary is that file, outside the repo). Project LICENSE TBD, now
+  unencumbered. DIVERGENCE #3 from anima: with-preamble ≡ (preamble, system).
 
 ## Queue (rough order)
 
