@@ -37,6 +37,7 @@ contract — TUI palette, nREPL, and a future MCP facade all enumerate it):
 (open! :my-session)            ; get-or-create a tape
 (eval! :my-session "hello")    ; commit ONE turn (tape advances)
 (fork! :my-session :variant)   ; copy tape+config — counterfactuals are cheap
+(fork! :my-session :redo {:at 2}) ; branch an OLDER turn (first 2 messages)
 (bounce! :my-session "probe")  ; one completion off the FIXED tape (unchanged)
 (trampoline! :my-session [...]); fan varied inputs off the fixed point
 (run-battery! :my-session [..]); fold a probe sequence (tape advances)

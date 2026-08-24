@@ -22,20 +22,30 @@
    ;; command must resolve bare in a typed (form). The alias stays for main's
    ;; own code (reads qualified).
    [us.whitford.llm-repl.core :as core :refer :all]
-   [us.whitford.llm-repl.roster :as roster]))
+   [us.whitford.llm-repl.roster :as roster]
+   [us.whitford.llm-repl.tui :as tui]))
 
 (defonce ^{:doc "The prompt loop's current session slug — loop-local UI state,
    NOT registry state (attached clients have their own notion of focus)."}
   current*
   (atom :scratch))
 
+(defonce ^{:doc "The active TUI handle when the TUI surface is up, else nil —
+   lets use! (callable from a typed form OR an attached client) retarget the
+   TUI's focus too."}
+  tui*
+  (atom nil))
+
 (defn use!
-  "Point the terminal loop at `slug` (opening it if needed, `opts` forwarded).
+  "Point the human surface at `slug` (opening it if needed, `opts` forwarded)
+   — the plain loop's current session AND the TUI's focus when active.
    Returns the session's compact index entry."
   ([slug] (use! slug {}))
   ([slug opts]
    (core/open! slug opts)
    (reset! current* slug)
+   (when-let [h @tui*]
+     (swap! (:state h) assoc :slug slug :scroll 0 :render-dirty true))
    {:repl/id slug :repl/depth (count (:tape (core/snapshot slug)))}))
 
 ;; ── nREPL (the attach surface) ────────────────────────────────────────────────
@@ -118,16 +128,74 @@
           (str/starts-with? line "(") (do (eval-form line) (prompt) (recur))
           :else                     (do (chat-line line) (prompt) (recur)))))))
 
+;; ── TUI wiring (the wire layer: submissions ⊕ registry watch) ─────────────────
+
+(defn- push-event!
+  "Append a system line to the TUI's events (bounded) and mark dirty."
+  [state line]
+  (swap! state (fn [s]
+                 (-> s
+                     (update :events #(vec (take-last 200 (conj % line))))
+                     (assoc :render-dirty true)))))
+
+(defn- tui-submit!
+  "The submission dispatch — same grammar as the plain loop, but every branch
+   runs on a WORKER thread so the UI stays live (pending marker meanwhile;
+   the plain loop blocks here, the TUI does not)."
+  [h text]
+  (let [state (:state h)]
+    (if (str/starts-with? text "(")
+      (future
+        (let [res (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
+                         (pr-str (eval (read-string text))))
+                       (catch Throwable t (str "error: " (ex-message t))))]
+          (push-event! state (str "=> " res))))
+      (let [slug (:slug @state)]
+        (swap! state assoc :pending slug :render-dirty true)
+        (future
+          (let [{:repl/keys [error]} (core/eval! slug text)]
+            (swap! state assoc :pending nil :render-dirty true)
+            (when error (push-event! state (str "error: " error)))))))))
+
+(defn run-tui
+  "Boot the TUI surface over core's registry and BLOCK until it stops.
+   The add-watch is the multi-client moment: any registry change — an attached
+   nREPL client's eval!, a worker completing — flips the dirty flag; the
+   ticker repaints within ~33ms. No polling, no push protocol."
+  [nrepl-port]
+  (let [h* (promise)
+        h  (tui/start! {:registry   core/sessions*
+                        :slug       @current*
+                        :nrepl-port nrepl-port
+                        ;; deferred handle: the input thread starts inside
+                        ;; start!, before we hold h — close over the promise
+                        :on-submit  (fn [text] (tui-submit! @h* text))
+                        :on-stop    (fn [] (remove-watch core/sessions* ::tui))})]
+    (deliver h* h)
+    (reset! tui* h)
+    (add-watch core/sessions* ::tui
+               (fn [_ _ _ _] (tui/request-render! (:state h))))
+    @(promise)))
+
 (defn -main
-  "Entry: nREPL up first (attach works even while a completion blocks the
-   terminal), then banner + loop. --headless ≡ nREPL only (park forever)."
+  "Entry: nREPL up first (attach works even while a completion is in flight),
+   then the surface: TUI on an interactive terminal, --plain for the line
+   loop, --headless for nREPL only (park forever)."
   [& args]
-  (let [headless? (contains? (set args) "--headless")
+  (let [args      (set args)
+        headless? (contains? args "--headless")
+        plain?    (contains? args "--plain")
         port      (start-nrepl!)]
     (core/open! @current*)
-    (banner port)
-    (if headless?
-      @(promise)
-      (do (run-loop)
+    (cond
+      headless?
+      (do (banner port) @(promise))
+
+      (and (not plain?) (tui/interactive-terminal?))
+      (run-tui port)
+
+      :else
+      (do (banner port)
+          (run-loop)
           (println "bye")
           (System/exit 0)))))

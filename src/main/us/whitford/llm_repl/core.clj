@@ -333,9 +333,17 @@
   "Copy the tape (call/cc): a NEW session `to` carrying the same tape ∧ config as
    `from`, with any `opts` config overrides merged in — two continuations from
    one prefix (cheap for the model: shared KV prefix). Override a knob (e.g.
-   {:preamble? false}) for the counterfactual boot. Refuses a missing `from` or
-   an existing `to` (no silent clobber — λ escalate). Returns
-   {:repl/id :repl/from :repl/depth :repl/config} or {:repl/error …} as data."
+   {:preamble? false}) for the counterfactual boot.
+
+   `:at` ≡ fork an OLDER turn: truncate the copy to the first N MESSAGES (the
+   depth number the prompt shows — 2 per exchange). (fork! :scratch :redo
+   {:at 2}) branches from scratch[2]; the parent keeps its full tape — the
+   tape is a TREE, the conversation one path (standalone accretion; anima's
+   fork! is the :at-less special case).
+
+   Refuses a missing `from` or an existing `to` (no silent clobber —
+   λ escalate). Returns {:repl/id :repl/from :repl/depth :repl/config} or
+   {:repl/error …} as data."
   ([from to] (fork! from to {}))
   ([from to opts]
    (let [src (get @sessions* from)]
@@ -345,7 +353,8 @@
        :else
        (let [copy (-> src
                       (assoc :slug to :forked-from from :created-at (System/currentTimeMillis))
-                      (update :config merge (select-keys opts config-keys)))]
+                      (update :config merge (select-keys opts config-keys))
+                      (cond-> (:at opts) (update :tape #(vec (take (:at opts) %)))))]
          (store! to copy)
          {:repl/id     to
           :repl/from   from
