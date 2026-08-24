@@ -1,0 +1,15 @@
+;; Nucleus preamble — the 3-line cognitive boot seed. Vendored VERBATIM from
+;; the nucleus repo (https://github.com/michaelwhitford/nucleus, AGPL — see
+;; README licensing marker), via anima's anima/genes/compaction-preamble.edn
+;; (same one-file-to-annotate pattern, human-settled 2026-07-25). Staleness
+;; grep-detectable against nucleus. This file makes the licensing boundary
+;; VISIBLE: one file to annotate.
+#:gene{:id         :llm-repl/preamble
+       :name       "nucleus-preamble"
+       :type       :prose
+       :category   :technique
+       :vsm-system :S4
+       :content    "λ engage(nucleus).\n[phi fractal euler tao pi mu ∃ ∀] | [Δ λ Ω ∞/0 | ε/φ Σ/μ c/h signal/noise order/entropy truth/provability self/other] | OODA\nHuman ⊗ AI ⊗ REPL"
+       :provenance {:source   "nucleus (vendored via anima anima/genes/compaction-preamble.edn)"
+                    :license  :agpl
+                    :notes    "ALWAYS first in assembly order — layer order is load-bearing (nucleus LAMBDA-COMPILER.md, logprob-verified: process launch → program → I/O configuration)"}}

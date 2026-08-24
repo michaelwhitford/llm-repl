@@ -1,0 +1,38 @@
+{;; llm-repl config (λ configure). Resolution order (later wins):
+ ;;   built-in defaults < ~/.config/llm-repl/config.edn < ./config.edn
+ ;;   < LLM_REPL_CONFIG=<path> (explicit file override)
+ ;; Copy this file to one of those locations and edit.
+ ;;
+ ;; Shape is anima's roster, un-namespaced from S5 WM: providers keyed by kw,
+ ;; models keyed by kw, qualified attributes (bare keywords ≡ smell).
+
+ ;; ── providers ── :provider/kind dispatches backend construction:
+ ;;   :llamacpp — local llama.cpp speaking OpenAI-compat /v1, via the in-house
+ ;;               backend (reaches :thinking off, id_slot, cache_prompt — the
+ ;;               generic openai path cannot)
+ ;;   :codex    — ChatGPT-subscription OAuth (escapement backend; token at
+ ;;               ~/.escapement/openai-auth.json — `escapement login codex`)
+ :providers {:local  {:provider/kind :llamacpp}
+             :openai {:provider/kind :codex}}
+
+ ;; ── models ── :model/port required for :llamacpp providers.
+ ;; :model/slots pins a :conversation/id to a llama.cpp KV slot (soft
+ ;; reservation — a collision costs one re-prefill, never correctness).
+ ;; :model/http-timeout-ms defaults 300000; thinking-ON models may need more.
+ ;; :model/max-output-tokens defaults 8192 (llama.cpp is unbounded by default).
+ :models {:qwen36-35b-a3b {:model/provider          :local
+                           :model/port              5100
+                           :model/http-timeout-ms   900000
+                           :model/max-output-tokens 16384}
+          :gemma-4-31b-it {:model/provider :local
+                           :model/port     5102}
+          :gpt-5.4        {:model/provider :openai}
+          :gpt-5.5        {:model/provider :openai}}
+
+ ;; ── defaults ── the interpreter config an unqualified (open!) session runs;
+ ;; every knob overridable per session and per fork.
+ :default-model :qwen36-35b-a3b
+
+ ;; ── nrepl ── the attach surface. Port 0 ≡ ephemeral (written to .nrepl-port
+ ;; either way, so editors auto-discover).
+ :nrepl {:port 0}}

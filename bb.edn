@@ -1,0 +1,12 @@
+{;; llm-repl runs under babashka FIRST (fast startup ≡ "as easy as starting a
+ ;; clojure repl"); the JVM (deps.edn) is the compatible superset. Escapement
+ ;; is bb-clean except its fulcro webui — which this app does not use.
+ :paths ["src/main" "resources"]
+ :deps  {com.fulcrologic/escapement {:local/root "../escapement"}}
+ :tasks
+ {llm-repl {:doc      "Start the llm-repl: terminal prompt loop + nREPL attach port"
+            :requires ([us.whitford.llm-repl.main :as main])
+            :task     (main/-main)}
+  nrepl    {:doc      "Headless llm-repl: nREPL server only (attach-and-drive)"
+            :requires ([us.whitford.llm-repl.main :as main])
+            :task     (main/-main "--headless")}}}

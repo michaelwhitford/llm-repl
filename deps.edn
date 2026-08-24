@@ -1,0 +1,9 @@
+{;; JVM classpath — the compatible superset of bb.edn (bb is the primary
+ ;; runtime; keep both in sync). nrepl/nrepl is JVM-only: babashka ships its
+ ;; own nREPL server (babashka.nrepl.server).
+ :paths ["src/main" "resources"]
+ :deps  {org.clojure/clojure        {:mvn/version "1.12.0"}
+         com.fulcrologic/escapement {:local/root "../escapement"}
+         nrepl/nrepl                {:mvn/version "1.3.1"}}
+ :aliases
+ {:test {:extra-paths ["src/test"]}}}
