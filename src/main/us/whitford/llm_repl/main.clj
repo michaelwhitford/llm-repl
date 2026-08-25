@@ -149,7 +149,7 @@
    layer renders because tui stays core-free — content is injected."
   [h]
   (tui/show-overlay! (:state h)
-                     {:title "help · esc dismisses"
+                     {:title "help"    ; frame decorates: ⧉ + esc hint
                       :lines (str/split-lines (core/help))}))
 
 (defn- tui-submit!

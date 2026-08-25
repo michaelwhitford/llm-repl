@@ -266,8 +266,13 @@
                       tl)]
         (cmp/draw-box buf {:row 1 :col 1 :w tree-w :h box-h
                            :title "tree" :theme theme :body-lines body})))
+    ;; overlay decoration is the FRAME's contract, not each caller's: every
+    ;; overlay announces itself (⧉ ≡ stacked-over) and how to leave (esc) —
+    ;; callers pass a bare :title
     (cmp/draw-box buf {:row 1 :col (inc tree-w) :w tape-w :h box-h
-                       :title (if overlay (:title overlay) (title-line state reg))
+                       :title (if overlay
+                                (str "⧉ " (:title overlay) " — esc closes")
+                                (title-line state reg))
                        :scroll scroll
                        :theme theme
                        :body-lines (vec lines)})
