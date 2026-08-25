@@ -67,7 +67,10 @@ Multi-line paste lands as **one** submission (bracketed paste).
 ## Attach
 
 The launcher writes `.nrepl-port`. From any nREPL client — CIDER, Conjure,
-a babashka socket, another model's agent loop:
+a babashka socket, another model's agent loop. Both runtimes serve the
+editor ops (completion, lookup/eldoc, load-file — verified over the wire);
+under bb the cider-style ops are native, on the JVM add cider-nrepl to your
+own alias if you want the full middleware experience:
 
 ```clojure
 (require '[us.whitford.llm-repl.core :as repl])
