@@ -85,6 +85,19 @@
           (conj (str (theme/sgr-wrap theme/chart-color "  …   ")
                      (theme/paint theme :status/waiting "thinking")))))))
 
+(defn welcome-lines
+  "The TUI's in-idiom banner: dim grammar hints shown in the tape pane WHILE
+   THE TAPE IS EMPTY (the printed banner belongs to plain/headless — the alt
+   screen eats stdout). Vanishes at the first turn. Model ∧ nREPL port live
+   in the title line already; this is only what the hands need."
+  [w]
+  (mapv #(theme/sgr-wrap theme/debug-color (cmp/truncate-display % w))
+        [""
+         " type to chat — Enter sends a turn on this session"
+         " (form) evaluates as clojure — (help) or ? for the manual"
+         " Tab walks the session tree · PgUp/PgDn scroll · Esc clears"
+         " attach: any nREPL client on the port in the title"]))
+
 (defn visible-window
   "Apply scroll (lines up from the tail) to `lines`, yielding exactly the
    window that fits `h` rows ⊕ the {:pos :total} scroll indicator."
@@ -224,8 +237,9 @@
             {:lines       (vec (take inner-h (drop sc ls)))
              :scroll      {:pos (min total (+ sc inner-h)) :total total}
              :scroll-used sc})
-          (visible-window (tape-lines tape (some? pending) theme (- tape-w 2))
-                          inner-h scroll))
+          (let [tl (tape-lines tape (some? pending) theme (- tape-w 2))
+                tl (if (seq tl) tl (welcome-lines (- tape-w 2)))]
+            (visible-window tl inner-h scroll)))
         buf     (StringBuilder.)]
     (when two?
       (let [tree-iw (- tree-w 2)
