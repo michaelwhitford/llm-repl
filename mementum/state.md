@@ -54,6 +54,15 @@ restore on exit.
   Tab walks DFS tree order — movement on screen ≡ movement in the tree.
   Design rule learned: events ≡ global UI chrome, NEVER tape content;
   receipts point INTO the tree, payloads live AT the nodes.
+- ✅ RECEIPTS IN CORE (`events*` beside `sessions*`, public `event!`): every
+  command seam emits one-line receipts — so ATTACHED-client activity shows in
+  the tree-pane footer, incl. tapeless trampoline!/bounce! (the receipt IS
+  the trace) and error receipts with messages. Found live: an agent ran 13
+  probes, TUI showed nothing — events were fed only by the TUI's own input
+  path (equal clients on tape, unequal in chrome — now equal at BOTH layers).
+  TUI derefs :events-ref per frame (referenced like :registry; frame pure);
+  narrow mode has NO event display (footer home ≡ tree pane only). Needs a
+  TUI restart to take effect — core hot-reload alone won't rewire watches.
   Still queued: compare pane (children side-by-side, config deltas), pathom
   resolvers (3c), AI operator-manual layer (compiled from ns-publics;
   curated via ^:manual meta).
