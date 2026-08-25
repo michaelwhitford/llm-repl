@@ -168,9 +168,20 @@
 
       (str/starts-with? text "(")
       (future
-        (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
-               (form-echo! (eval (read-string text))))
-             (catch Throwable t (core/event! (str "error: " (ex-message t))))))
+        ;; CAPTURE printed output — raw *out* lands on the alt screen and the
+        ;; next frame paints over it (one flicker, output lost). Output is a
+        ;; DOCUMENT: it pops as an overlay (esc dismisses), the VALUE stays a
+        ;; footer receipt. (println (help)) thus works in the TUI too.
+        (let [sw (java.io.StringWriter.)]
+          (try (binding [*ns*  (find-ns 'us.whitford.llm-repl.main)
+                         *out* sw
+                         *err* sw]
+                 (form-echo! (eval (read-string text))))
+               (catch Throwable t (core/event! (str "error: " (ex-message t)))))
+          (let [out (str sw)]
+            (when-not (str/blank? out)
+              (tui/show-overlay! state {:title (ellipsize text 28)
+                                        :lines (str/split-lines out)})))))
 
       :else
       (let [slug (:slug @state)]
