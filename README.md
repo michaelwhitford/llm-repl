@@ -10,7 +10,10 @@ The repl isn't a tool a model uses — it's a *place* where tapes live. Humans
 same commands, the same registry, the same activity stream.
 
 Gen-1 was a Python repl that attached *to* a parent model. This inverts it:
-clients attach to *it*.
+clients attach to *it* — including, if you arm it, the hosted model itself:
+with `:tools` on, the model gets a `clojure_eval` tool that evaluates in the
+very process running its conversation. The model becomes a client of its own
+repl (see **Self-eval** below).
 
 ## Run
 
@@ -87,7 +90,8 @@ in-flight markers included (`eval! :scratch …`).
 Copy `config.example.edn` to `~/.config/llm-repl/config.edn` (or `./config.edn`)
 and point the model roster at your llama.cpp servers (an OpenAI-subscription
 provider is also supported). Resolution: defaults < XDG < repo-local <
-`LLM_REPL_CONFIG` env var.
+`LLM_REPL_CONFIG` env var. Add `:tools true` at the top level to boot every
+session with the self-eval tool (see **Self-eval**).
 
 ## Drive
 
@@ -121,6 +125,46 @@ The model-drives-model loop is the point: an agent attaches over nREPL,
 `trampoline!`s probes against a fixed context (KV prefix reused, bounces
 discarded), `ab!`s the interesting ones across configs, and grades the
 receipts — while a human watches the same registry from the TUI.
+
+## Self-eval — the model as its own client
+
+Arm a session with `:tools` and the model gets **`clojure_eval`**: it
+evaluates Clojure *in the process hosting its own conversation*. This is not
+a sandbox bolted on the side — the loop assembling its prompt, the tape that
+is its memory, and the runtime it evals in are one live image. Armed
+sessions are also told, in their system prompt, where they live. The model
+can compute instead of guessing, inspect its own tape mid-turn, list itself
+in the registry, `fork!` its own history and `bounce!` probes off it:
+
+```clojure
+(open! :s {:tools true})            ; arm one session (true ≡ every registered tool)
+(open! :s {:tools [:clojure/eval]}) ; …or an explicit whitelist
+(open! :bare {:tools nil})          ; disarm — or run the counterfactual directly:
+(ab! :s {:bare {:tools nil} :armed {:tools true}} "the probe")
+```
+
+Make it a machine fact with `:tools true` at the top level of your config
+file — every fresh session boots armed, restarts included.
+
+Mechanics worth knowing:
+
+- **The tape stays clean.** The tool exchange is loop-local; the tape only
+  records your turn and the final reply (shape stable → the KV prefix cache
+  holds; forks and compaction are untouched). The receipt stream is the
+  trace.
+- **You watch it work.** Every eval ticks the TUI footer as
+  `⚡ :s (code…)` — the model's moves appear live, same stream as everyone
+  else's (equal clients, equal chrome).
+- **Bounded.** 8 tool round-trips per turn, then a teaching refusal and one
+  final inference. A model-initiated `eval!`/`bounce!` completes *plain*
+  (depth guard): self-reference at depth 1 is the feature, unbounded nesting
+  is not.
+- **Errors are data.** Eval errors, timeouts, and truncations return as
+  text the model reads and corrects — never a throw.
+- **Open slot.** The registry rides `escapement.tools.protocol`; a host
+  `register!`s more tools and sessions whitelist them by keyword. Full
+  runtime, no sandbox — the model gets exactly what any attached nREPL
+  client gets, receipts watching.
 
 ## Preamble
 
