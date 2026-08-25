@@ -2,7 +2,7 @@
  ;; clojure repl"); the JVM (deps.edn) is the compatible superset. Escapement
  ;; is bb-clean except its fulcro webui — which this app does not use.
  :paths ["src/main" "resources"]
- :deps  {com.fulcrologic/escapement {:local/root "../escapement"}}
+ :deps  {com.fulcrologic/escapement {:mvn/version "1.0.1"}}
  :tasks
  {llm-repl {:doc      "Start the llm-repl: TUI (or --plain / --headless) + nREPL attach port"
             :requires ([us.whitford.llm-repl.main :as main])

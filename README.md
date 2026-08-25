@@ -20,9 +20,9 @@ bb llm-repl --plain     # line-oriented prompt loop instead of the TUI
 bb nrepl                # headless: nREPL server only (attach-and-drive)
 ```
 
-Runs under **babashka** (primary) or JVM Clojure. Requires
-[escapement](../escapement) as a sibling checkout
-(`:local/root "../escapement"` in `deps.edn`).
+Runs under **babashka** (primary) or JVM Clojure. Depends on
+[escapement](https://clojars.org/com.fulcrologic/escapement) from Clojars —
+clone and `bb llm-repl`, nothing else to check out.
 
 The nREPL server starts *first* in every mode — you can attach even while a
 completion is in flight.
