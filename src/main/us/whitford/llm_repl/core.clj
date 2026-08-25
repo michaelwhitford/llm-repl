@@ -248,6 +248,33 @@
        "Your next response is your final one: answer in plain text from "
        "what you already have. Do not call any tool."))
 
+(def tools-system
+  "The ENVIRONMENT orientation appended to the system prompt when :tools is
+   armed — the model should know WHERE IT LIVES, not just that a tool exists
+   (tool descriptions carry mechanics; models weigh the system prompt for
+   identity/situation). Appended by `tool-complete` — NEVER build-request —
+   so it rides iff the tool defs are actually on the wire: a depth-guarded
+   nested completion must not claim a tool it doesn't have, and an unarmed
+   arm of an ab! counterfactual stays clean. Public: redef to reshape the
+   orientation (an embedding host may speak its own idiom)."
+  (str "Your environment: you are running inside a live Clojure REPL — this "
+       "conversation is a tape held by that process, and you are one of its "
+       "clients. Your clojure_eval tool evaluates code in that same process. "
+       "Use it for any computation or fact about your runtime instead of "
+       "guessing: the repl's answer is ground truth. To inspect or drive the "
+       "repl itself: (require '[us.whitford.llm-repl.core :as repl]) then "
+       "(repl/help) lists the session commands — sessions, tapes, forks."))
+
+(defn- with-tools-system
+  "Append the environment orientation to a Request's :system (creating it
+   when the session runs bare — a raw-prose probe still deserves to know
+   where it lives once tools are armed)."
+  [request]
+  (assoc request :system
+         (if-let [s (:system request)]
+           (str s "\n\n" tools-system)
+           tools-system)))
+
 (defn- session-tools
   "config :tools → the Tool records this session exposes. true ≡ all
    registered; [kw …] ≡ whitelist (unknown kw throws — caught by the driver
@@ -321,7 +348,9 @@
     (binding [*tool-depth* (inc *tool-depth*)]
       (let [{:keys [defs name->kw]} (tool-wire (session-tools (:tools config)))
             backend (session-backend config slug)
-            base    (assoc (build-request config slug tape) :tools defs)
+            base    (-> (build-request config slug tape)
+                        (with-tools-system)
+                        (assoc :tools defs))
             send!   (fn [messages]
                       (p/await! (proto/send-turn backend (assoc base :messages messages))))]
         (loop [messages (:messages base)
