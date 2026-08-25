@@ -1,5 +1,7 @@
 .nrepl-port
 .cpcache/
 target/
+.clj-kondo/
+.lsp/
 config.edn
 .DS_Store
