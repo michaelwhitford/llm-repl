@@ -218,7 +218,7 @@
             ;; footer: the last few events, VERY short (dim, truncated) —
             ;; an index of what happened, never the payload
             evs     (mapv #(theme/sgr-wrap theme/debug-color (cmp/truncate-display % tree-iw))
-                          (take-last 3 events))
+                          (take-last 5 events))
             ev-h    (if (seq evs) (inc (count evs)) 0)
             tree-h  (max 1 (- inner-h ev-h))
             tl      (tree-lines reg slug theme tree-iw)

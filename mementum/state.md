@@ -49,7 +49,7 @@ restore on exit.
   (no use case needs it; distill-via-chat-memory noted as the design if ever).
 - ✅ TREE PANE (human-ratified "looks better"): two-pane ≥70 cols — LEFT ≡
   fork forest (glyphs, short arm names, @branch-points, current highlighted,
-  windowed) with an EVENT FOOTER (last 3, dim, receipt-length — "ab! :s 3✓");
+  windowed) with an EVENT FOOTER (last 5, dim, receipt-length — "ab! :s 3✓");
   RIGHT ≡ tape, conversation-only (events structurally out of tape-lines).
   Tab walks DFS tree order — movement on screen ≡ movement in the tree.
   Design rule learned: events ≡ global UI chrome, NEVER tape content;
