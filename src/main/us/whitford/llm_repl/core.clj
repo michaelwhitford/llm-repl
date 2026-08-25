@@ -194,7 +194,7 @@
 
 (defn- store! [slug sess] (swap! sessions* assoc slug sess) sess)
 
-(defn ^:manual open!
+(defn ^{:manual "Get or create a session. Options set its model, system, temperature."} open!
   "Get-or-create the session at `slug`, merging any config overrides from `opts`
    (config-keys) into its :config. Returns the session map (also stored)."
   ([slug] (open! slug {}))
@@ -211,12 +211,12 @@
      (when-not existing (event! (str "open! " slug)))
      (store! slug sess))))
 
-(defn ^:manual snapshot
+(defn ^{:manual "The full session map — tape included."} snapshot
   "The session map at `slug`, or nil (λ observe). `:tape` is the canonical tape."
   [slug]
   (get @sessions* slug))
 
-(defn ^:manual sessions-list
+(defn ^{:manual "List all sessions: model, depth, turns, fork parent."} sessions-list
   "A compact index of live sessions (λ glass) — no message bodies."
   []
   (mapv (fn [[slug s]]
@@ -229,7 +229,7 @@
            :forked-at   (:forked-at s)})
         @sessions*))
 
-(defn ^:manual manual
+(defn ^{:manual "The command manual as data — for agents and tools."} manual
   "The operator manual AS DATA (λ glass): every `^:manual` command in this ns
    as {:name :arglists :doc} — COMPILED from ns-publics, never hand-written
    (structure > instruction: the docstrings are the source of truth; tagging
@@ -239,28 +239,34 @@
   []
   (->> (ns-publics 'us.whitford.llm-repl.core)
        (keep (fn [[sym v]]
-               (let [m (meta v)]
-                 (when (:manual m)
-                   {:name sym :arglists (:arglists m) :doc (:doc m)}))))
+               (let [m  (meta v)
+                     mn (:manual m)]
+                 (when mn
+                   {:name     sym
+                    :arglists (:arglists m)
+                    ;; the tag's VALUE ≡ the curated human sentence; a bare
+                    ;; `true` tag falls back to the docstring's first line
+                    :summary  (if (string? mn)
+                                mn
+                                (first (str/split-lines (or (:doc m) ""))))
+                    :doc      (:doc m)}))))
        (sort-by (comp str :name))
        vec))
 
-(defn ^:manual help
-  "Human rendering of (manual): one entry per command — name, arglists, first
-   TWO docstring lines (the overlay pane scrolls; two lines carry the shape
-   of a command, one carried only its opening clause). Returns a STRING
-   (caller prints; a println here would corrupt the TUI's alt screen).
-   Full docs: (manual), or (:doc (meta #'cmd))."
+(defn ^{:manual "This help."} help
+  "Human rendering of (manual): one entry per command — name, arglists, and
+   the CURATED human summary (the ^:manual tag's string value; docstrings
+   stay maintainer/agent-dense — two audiences, two texts, ONE seam).
+   Returns a STRING (caller prints; a println here would corrupt the TUI's
+   alt screen). Full docs: (manual), or (:doc (meta #'cmd))."
   []
   (->> (manual)
-       (map (fn [{:keys [name arglists doc]}]
+       (map (fn [{:keys [name arglists summary]}]
               (str (format "%-14s" name) " " (pr-str arglists) "\n"
-                   (->> (take 2 (str/split-lines (or doc "")))
-                        (map #(str "    " (str/trim %)))
-                        (str/join "\n")))))
+                   "    " summary)))
        (str/join "\n")))
 
-(defn ^:manual drop!
+(defn ^{:manual "Delete a session."} drop!
   "Discard the session at `slug`. Returns true when one existed."
   [slug]
   (let [existed? (contains? @sessions* slug)]
@@ -268,7 +274,7 @@
     (when existed? (event! (str "drop! " slug)))
     existed?))
 
-(defn ^:manual reset-all!
+(defn ^{:manual "Delete ALL sessions."} reset-all!
   "Clear the whole registry (test seam / operator reset)."
   []
   (reset! sessions* {})
@@ -287,7 +293,7 @@
      :repl/added   (count replies)
      :repl/replies replies}))
 
-(defn ^:manual eval!
+(defn ^{:manual "Chat: send text to a session; the reply is appended to its tape."} eval!
   "Run ONE completion on the session's tape (interactive driver — applies the
    rf's 2-arity STEP). Ensures the session (creating with `opts` overrides),
    persists the user turn FIRST (retry-safe on failure), completes, appends the
@@ -321,7 +327,7 @@
          {:repl/id    slug
           :repl/error (str "send failed: " (ex-message t))})))))
 
-(defn ^:manual run-battery!
+(defn ^{:manual "Run a fixed probe sequence, appending every turn to the tape."} run-battery!
   "Fold a FIXED probe sequence over the session's tape via `transduce` (the
    transducer driver — G2: eager, never lazy). `:xform` (default identity)
    preprocesses/instruments the probe stream (rf→rf prosthesis lands here in a
@@ -353,7 +359,7 @@
   [step prefix input]
   (:text (last (step prefix input))))
 
-(defn ^:manual bounce!
+(defn ^{:manual "Try ONE input against a session without changing its tape."} bounce!
   "Bounce ONE input off the session's FIXED tape (the fixed point): complete once
    from the prefix, return the output, leave the tape UNCHANGED. Non-committing —
    unlike eval!, the fixed point does not move, so you can keep bouncing varied
@@ -377,7 +383,7 @@
          (event! (str "bounce! " slug " ✗ " (ex-message t)))
          {:repl/id slug :repl/error (str "send failed: " (ex-message t))})))))
 
-(defn ^:manual trampoline!
+(defn ^{:manual "Try MANY inputs against the same fixed tape; nothing is saved."} trampoline!
   "Bounce a vector of VARIED inputs off the session's FIXED tape — fan-out from
    the fixed point (`map`, not `fold`: inputs never accumulate into each other;
    fork-isolation from the immutable acc gives per-bounce independence). The tape
@@ -406,7 +412,7 @@
       :repl/depth   (count prefix)
       :repl/bounces bounces})))
 
-(defn ^:manual fork!
+(defn ^{:manual "Branch a session copy. {:at N} branches from an older turn."} fork!
   "Copy the tape (call/cc): a NEW session `to` carrying the same tape ∧ config as
    `from`, with any `opts` config overrides merged in — two continuations from
    one prefix (cheap for the model: shared KV prefix). Override a knob (e.g.
@@ -450,7 +456,7 @@
           :repl/depth  (count (:tape copy))
           :repl/config (:config copy)})))))
 
-(defn ^:manual ab!
+(defn ^{:manual "Fork N config variants and send the same probe to each."} ab!
   "Fan ONE probe across VARIED interpreters from a common parent — the DUAL of
    trampoline! (which fans varied inputs off one interpreter). ∀variant:
    fork!(from → from-variant, config overrides ⊕ :at) → eval!(probe). The
