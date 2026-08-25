@@ -64,7 +64,14 @@ restore on exit.
   narrow mode has NO event display (footer home ≡ tree pane only). Needs a
   TUI restart to take effect — core hot-reload alone won't rewire watches.
   Still queued: compare pane (children side-by-side, config deltas), pathom
-  resolvers (3c), TUI help overlay.
+  resolvers (3c).
+- ✅ HELP OVERLAY: generic {:title :lines} overlay slot in TUI state — frame
+  swaps the RIGHT pane body to the injected document (head-anchored window;
+  tape untouched — the VIEW swaps, chrome never enters the tape). Esc
+  dismisses (overlay-first, else editor clear); `?` on empty buffer or
+  `(help)` (intercepted — form eval would echo a 60-char ellipsis). tui
+  stays core-free: wire layer injects (core/help); compare pane should ride
+  the SAME overlay slot.
 - ✅ OPERATOR MANUAL (core tranche): 11 commands tagged `^:manual`;
   `(manual)` ≡ data compiled from ns-publics ({:name :arglists :doc} — the
   docstrings ARE the source), `(help)` ≡ string render (RETURNS, never
