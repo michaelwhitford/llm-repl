@@ -68,7 +68,9 @@ restore on exit.
 - ✅ HELP OVERLAY: generic {:title :lines} overlay slot in TUI state — frame
   swaps the RIGHT pane body to the injected document (head-anchored window;
   tape untouched — the VIEW swaps, chrome never enters the tape). Esc
-  dismisses (overlay-first, else editor clear); `?` on empty buffer or
+  dismisses (overlay-first, else editor clear); arrows line-scroll, PgUp/PgDn
+  page — scroll-view! owns the per-kind SIGN FLIP (tape tail-anchored,
+  overlay head-anchored; keys stay direction-literal); `?` on empty buffer or
   `(help)` (intercepted — form eval would echo a 60-char ellipsis). tui
   stays core-free: wire layer injects (core/help); compare pane should ride
   the SAME overlay slot.
