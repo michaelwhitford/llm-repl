@@ -363,8 +363,14 @@
                       (update :config merge (select-keys opts config-keys))
                       (cond-> (:at opts) (update :tape #(vec (take (:at opts) %)))))
              ;; the BRANCH POINT — the tree edge is (from @ forked-at → to);
-             ;; without it an :at fork's edge is lossy (tree views need it)
-             copy (assoc copy :forked-at (count (:tape copy)))]
+             ;; without it an :at fork's edge is lossy (tree views need it).
+             ;; :turns re-DERIVED from the copied tape (not copied from the
+             ;; parent's counter): an :at truncation drops assistant turns,
+             ;; and the tape is the ground truth the counter must agree with.
+             copy (assoc copy
+                         :forked-at (count (:tape copy))
+                         :turns     (count (filter #(= :assistant (:role %))
+                                                   (:tape copy))))]
          (store! to copy)
          {:repl/id     to
           :repl/from   from
