@@ -78,6 +78,25 @@
   sessions*
   (atom {}))
 
+(defonce ^{:doc "The RECEIPT stream — global UI chrome BESIDE the tape registry
+   (bounded vector of one-line receipts, e.g. \"eval! :lambda ✓@6\"). Emitted
+   at every command seam so EVERY client's activity — attached nREPL agents
+   included — is observable by any surface (equal clients at BOTH layers, tape
+   ∧ chrome). Tapeless drivers (bounce!/trampoline!) leave their trace HERE:
+   the receipt is the trace, the payload stays ephemeral. Receipts index what
+   happened; payloads live at the nodes (ratified design rule). defonce so a
+   reload keeps the trail."}
+  events*
+  (atom []))
+
+(defn event!
+  "Append one receipt line to `events*` (bounded: last 100). Returns `line`.
+   Public — surfaces may contribute receipts (the TUI's form echoes ride
+   this); keep them receipt-length, the tree-pane footer is ~24 cols."
+  [line]
+  (swap! events* #(vec (take-last 100 (conj % line))))
+  line)
+
 (def default-system
   "The minimal, constant system prompt — held constant across a preamble-on/off
    fork so the counterfactual boot isolates exactly one variable (the preamble)."
@@ -188,6 +207,7 @@
                       :config     (merge default-config overrides)
                       :turns      0
                       :created-at (System/currentTimeMillis)})]
+     (when-not existing (event! (str "open! " slug)))
      (store! slug sess))))
 
 (defn snapshot
@@ -213,12 +233,14 @@
   [slug]
   (let [existed? (contains? @sessions* slug)]
     (swap! sessions* dissoc slug)
+    (when existed? (event! (str "drop! " slug)))
     existed?))
 
 (defn reset-all!
   "Clear the whole registry (test seam / operator reset)."
   []
-  (reset! sessions* {}))
+  (reset! sessions* {})
+  (event! "reset-all!"))
 
 ;; ── drivers ────────────────────────────────────────────────────────────────────
 
@@ -251,16 +273,19 @@
          complete   ((get opts :complete-fn default-complete) (:config sess) slug)
          rf         (eval-rf {:complete complete})]
      ;; persist the user turn first — a completion throw leaves it for retry
+     (event! (str "eval! " slug " …"))
      (store! slug (update sess :tape mem/append-user text))
      (try
        (let [tape' (rf before text)
              done  (-> sess (assoc :tape tape') (update :turns inc))]
          (store! slug done)
+         (event! (str "eval! " slug " ✓@" (count tape')))
          {:repl/id    slug
           :repl/reply (:text (last tape'))
           :repl/depth (count tape')
           :repl/turns (:turns done)})
        (catch Throwable t
+         (event! (str "eval! " slug " ✗ " (ex-message t)))
          {:repl/id    slug
           :repl/error (str "send failed: " (ex-message t))})))))
 
@@ -280,9 +305,13 @@
          before   (:tape sess)
          complete ((get opts :complete-fn default-complete) (:config sess) slug)
          rf       (eval-rf {:complete complete})
+         _        (event! (str "battery! " slug " " (count probes) "…"))
          tape'    (transduce (get opts :xform identity) rf before (vec probes))
          added    (count (filter #(= :assistant (:role %)) (subvec tape' (count before))))]
      (store! slug (-> sess (assoc :tape tape') (update :turns + added)))
+     ;; all-or-nothing: a mid-battery throw leaves the start receipt dangling
+     ;; — the missing ✓ IS the signal (loud; λ antifragile)
+     (event! (str "battery! " slug " " added "✓"))
      (assoc (reply-metadata slug before tape') :repl/turns (+ (:turns sess) added)))))
 
 (defn- bounce-output
@@ -304,12 +333,16 @@
    (let [sess     (open! slug opts)
          complete ((get opts :complete-fn default-complete) (:config sess) slug)
          step     (eval-rf {:complete complete})]
+     (event! (str "bounce! " slug " …"))
      (try
-       {:repl/id     slug
-        :repl/input  text
-        :repl/output (bounce-output step (:tape sess) text)
-        :repl/depth  (count (:tape sess))}      ; the FIXED depth — unchanged
+       (let [out (bounce-output step (:tape sess) text)]
+         (event! (str "bounce! " slug " ✓"))
+         {:repl/id     slug
+          :repl/input  text
+          :repl/output out
+          :repl/depth  (count (:tape sess))})   ; the FIXED depth — unchanged
        (catch Throwable t
+         (event! (str "bounce! " slug " ✗ " (ex-message t)))
          {:repl/id slug :repl/error (str "send failed: " (ex-message t))})))))
 
 (defn trampoline!
@@ -327,14 +360,19 @@
    (let [sess     (open! slug opts)
          prefix   (:tape sess)
          complete ((get opts :complete-fn default-complete) (:config sess) slug)
-         step     (eval-rf {:complete complete})]
+         step     (eval-rf {:complete complete})
+         _        (event! (str "tramp! " slug " " (count inputs) "…"))
+         bounces  (mapv (fn [input]
+                          (try {:input input :output (bounce-output step prefix input)}
+                               (catch Throwable t
+                                 {:input input :error (str "send failed: " (ex-message t))})))
+                        (vec inputs))
+         errs     (count (filter :error bounces))]
+     (event! (str "tramp! " slug " " (- (count bounces) errs) "✓"
+                  (when (pos? errs) (str " " errs "✗"))))
      {:repl/id      slug
       :repl/depth   (count prefix)
-      :repl/bounces (mapv (fn [input]
-                            (try {:input input :output (bounce-output step prefix input)}
-                                 (catch Throwable t
-                                   {:input input :error (str "send failed: " (ex-message t))})))
-                          (vec inputs))})))
+      :repl/bounces bounces})))
 
 (defn fork!
   "Copy the tape (call/cc): a NEW session `to` carrying the same tape ∧ config as
@@ -355,8 +393,10 @@
   ([from to opts]
    (let [src (get @sessions* from)]
      (cond
-       (nil? src)                {:repl/error (str "no such repl session: " from)}
-       (contains? @sessions* to) {:repl/error (str "repl session already exists: " to)}
+       (nil? src)                (do (event! (str "fork! " from "→" to " ✗"))
+                                     {:repl/error (str "no such repl session: " from)})
+       (contains? @sessions* to) (do (event! (str "fork! " from "→" to " ✗"))
+                                     {:repl/error (str "repl session already exists: " to)})
        :else
        (let [copy (-> src
                       (assoc :slug to :forked-from from :created-at (System/currentTimeMillis))
@@ -372,6 +412,7 @@
                          :turns     (count (filter #(= :assistant (:role %))
                                                    (:tape copy))))]
          (store! to copy)
+         (event! (str "fork! " from "→" to "@" (:forked-at copy)))
          {:repl/id     to
           :repl/from   from
           :repl/depth  (count (:tape copy))
@@ -395,14 +436,17 @@
    (STANDALONE accretion #2 — not in anima.)"
   ([from variants probe] (ab! from variants probe {}))
   ([from variants probe opts]
-   {:repl/id    from
-    :repl/probe probe
-    :repl/variants
-    (into {}
-          (map (fn [[vk overrides]]
-                 (let [to     (keyword (str (name from) "-" (name vk)))
-                       forked (fork! from to (merge overrides (select-keys opts [:at])))]
-                   [vk (if (:repl/error forked)
-                         forked
-                         (eval! to probe (select-keys opts [:complete-fn])))])))
-          variants)}))
+   (let [arms (into {}
+                    (map (fn [[vk overrides]]
+                           (let [to     (keyword (str (name from) "-" (name vk)))
+                                 forked (fork! from to (merge overrides (select-keys opts [:at])))]
+                             [vk (if (:repl/error forked)
+                                   forked
+                                   (eval! to probe (select-keys opts [:complete-fn])))])))
+                    variants)
+         errs (count (filter :repl/error (vals arms)))]
+     (event! (str "ab! " from " " (- (count arms) errs) "✓"
+                  (when (pos? errs) (str " " errs "✗"))))
+     {:repl/id       from
+      :repl/probe    probe
+      :repl/variants arms})))

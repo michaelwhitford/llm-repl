@@ -130,66 +130,65 @@
 
 ;; ── TUI wiring (the wire layer: submissions ⊕ registry watch) ─────────────────
 
-(defn- push-event!
-  "Append a system line to the TUI's events (bounded) and mark dirty."
-  [state line]
-  (swap! state (fn [s]
-                 (-> s
-                     (update :events #(vec (take-last 200 (conj % line))))
-                     (assoc :render-dirty true)))))
-
 (defn- ellipsize [s n]
   (let [s (str/replace (str s) #"\s+" " ")]
     (if (> (count s) n) (str (subs s 0 n) "…") s)))
 
-(defn- result-events
-  "A form result → VERY short event lines (the tree pane's footer is ~24
-   cols). Events are a one-line INDEX of what happened — the payload lives in
-   the tree; arms are sessions, tab to them. ab! ≡ arm count ⊕ error count."
+(defn- form-echo!
+  "Echo a form's VALUE onto core's receipt stream — but ONLY when core didn't
+   already emit a receipt at the command seam (command returns carry :repl/id;
+   their receipts come from core). Payloads live in the tree; arms are
+   sessions, tab to them."
   [res]
-  (if (and (map? res) (:repl/variants res))
-    (let [vs   (:repl/variants res)
-          errs (count (filter :repl/error (vals vs)))]
-      [(str "ab! " (:repl/id res) " " (- (count vs) errs) "✓"
-            (when (pos? errs) (str " " errs "✗")))])
-    [(str "=> " (ellipsize (pr-str res) 60))]))
+  (when-not (and (map? res) (:repl/id res))
+    (core/event! (str "=> " (ellipsize (pr-str res) 60)))))
 
 (defn- tui-submit!
   "The submission dispatch — same grammar as the plain loop, but every branch
    runs on a WORKER thread so the UI stays live (pending marker meanwhile;
-   the plain loop blocks here, the TUI does not)."
+   the plain loop blocks here, the TUI does not). Receipts flow through
+   core/events* — the SAME stream attached clients write — never a TUI-local
+   side channel (equal clients in the chrome layer too)."
   [h text]
   (let [state (:state h)]
     (if (str/starts-with? text "(")
       (future
-        (let [evs (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
-                         (result-events (eval (read-string text))))
-                       (catch Throwable t [(str "error: " (ex-message t))]))]
-          (doseq [e evs] (push-event! state e))))
+        (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
+               (form-echo! (eval (read-string text))))
+             (catch Throwable t (core/event! (str "error: " (ex-message t))))))
       (let [slug (:slug @state)]
         (swap! state assoc :pending slug :render-dirty true)
         (future
-          (let [{:repl/keys [error]} (core/eval! slug text)]
-            (swap! state assoc :pending nil :render-dirty true)
-            (when error (push-event! state (str "error: " error)))))))))
+          ;; eval! emits its own …/✓/✗ receipts at the seam
+          (core/eval! slug text)
+          (swap! state assoc :pending nil :render-dirty true))))))
 
 (defn run-tui
   "Boot the TUI surface over core's registry and BLOCK until it stops.
-   The add-watch is the multi-client moment: any registry change — an attached
-   nREPL client's eval!, a worker completing — flips the dirty flag; the
-   ticker repaints within ~33ms. No polling, no push protocol."
+   The add-watches are the multi-client moment: any registry change (an
+   attached nREPL client's eval!, a worker completing) OR any receipt on
+   core/events* (a tapeless trampoline!/bounce! leaving its trace) flips the
+   dirty flag; the ticker repaints within ~33ms. No polling, no push
+   protocol."
   [nrepl-port]
   (let [h* (promise)
         h  (tui/start! {:registry   core/sessions*
+                        :events     core/events*
                         :slug       @current*
                         :nrepl-port nrepl-port
                         ;; deferred handle: the input thread starts inside
                         ;; start!, before we hold h — close over the promise
                         :on-submit  (fn [text] (tui-submit! @h* text))
-                        :on-stop    (fn [] (remove-watch core/sessions* ::tui))})]
+                        :on-stop    (fn []
+                                      (remove-watch core/sessions* ::tui)
+                                      (remove-watch core/events* ::tui))})]
     (deliver h* h)
     (reset! tui* h)
+    ;; TWO watches, one repaint path: tape changes AND receipts — an attached
+    ;; client's trampoline! never touches the registry, but its receipts land
     (add-watch core/sessions* ::tui
+               (fn [_ _ _ _] (tui/request-render! (:state h))))
+    (add-watch core/events* ::tui
                (fn [_ _ _ _] (tui/request-render! (:state h))))
     @(promise)))
 

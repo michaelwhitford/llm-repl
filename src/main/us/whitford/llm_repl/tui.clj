@@ -243,13 +243,13 @@
                        :scroll scroll
                        :theme theme
                        :body-lines (vec lines)})
+    ;; narrow fallback: sessions strip ONLY — events live in the tree pane's
+    ;; footer (left panel bottom), and narrow mode has no tree pane. No
+    ;; bottom-footer event display (ratified: the footer receipt home is the
+    ;; tree pane).
     (when-not two?
-      (let [ev (when-let [e (last events)] (str "  · " e))
-            sw (- term-w (cmp/display-width (or ev "")))]
-        (.append buf (cmp/move-to-s (inc box-h) 1))
-        (.append buf (sessions-line reg slug theme sw))
-        (when ev
-          (.append buf (theme/sgr-wrap theme/debug-color (cmp/truncate-display ev (- term-w sw)))))))
+      (.append buf (cmp/move-to-s (inc box-h) 1))
+      (.append buf (sessions-line reg slug theme term-w)))
     (let [input-row (+ box-h (if two? 1 2))
           il        (input-line state reg input term-w)]
       (.append buf (cmp/move-to-s input-row 1))
@@ -413,6 +413,10 @@
     (let [w (max 40 (.getWidth terminal))
           h (max 8 (.getHeight terminal))
           s (swap! state assoc :term-w w :term-h h :render-dirty false)
+          ;; the events STREAM is referenced (like :registry), deref'd per
+          ;; frame — `frame` stays pure, headless tests pass :events directly
+          s (cond-> s
+              (:events-ref s) (assoc :events (vec @(:events-ref s))))
           {:keys [s cursor-row cursor-col]} (frame @(:registry s) s theme w h)]
       (emit! (str hide-cursor-s s
                   (cmp/move-to-s cursor-row cursor-col)
@@ -492,12 +496,14 @@
 (defn start!
   "Boot the TUI: alt screen, bracketed paste, render ticker. Returns the
    handle {:state :terminal :lock :theme :stopped?} the input loop (input ns
-   half) and the wire layer drive. `registry` ≡ core's sessions* atom
-   (referenced, not copied — the frame reads it live). Caller must check
-   interactive-terminal? first."
-  [{:keys [registry slug nrepl-port on-stop on-submit]}]
+   half) and the wire layer drive. `registry` ≡ core's sessions* atom,
+   `events` ≡ core's events* atom (BOTH referenced, not copied — the frame
+   reads them live; every client's receipts show, not just this surface's).
+   Caller must check interactive-terminal? first."
+  [{:keys [registry events slug nrepl-port on-stop on-submit]}]
   (let [terminal (-> (TerminalBuilder/builder) (.system true) (.build))
         state    (atom {:registry     registry
+                        :events-ref   events
                         :slug         slug
                         :nrepl-port   nrepl-port
                         :scroll       0
