@@ -4,9 +4,9 @@
  :paths ["src/main" "resources"]
  :deps  {com.fulcrologic/escapement {:local/root "../escapement"}}
  :tasks
- {llm-repl {:doc      "Start the llm-repl: terminal prompt loop + nREPL attach port"
+ {llm-repl {:doc      "Start the llm-repl: TUI (or --plain / --headless) + nREPL attach port"
             :requires ([us.whitford.llm-repl.main :as main])
-            :task     (main/-main)}
+            :task     (apply main/-main *command-line-args*)}
   nrepl    {:doc      "Headless llm-repl: nREPL server only (attach-and-drive)"
             :requires ([us.whitford.llm-repl.main :as main])
             :task     (main/-main "--headless")}}}
