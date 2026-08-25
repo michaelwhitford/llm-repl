@@ -92,8 +92,11 @@
   (let [total  (count lines)
         scroll (max 0 (min scroll (max 0 (- total h))))
         shown  (take-last h (drop-last scroll lines))]
-    {:lines shown
-     :scroll {:pos (- total scroll) :total total}}))
+    {:lines       shown
+     :scroll      {:pos (- total scroll) :total total}
+     ;; the EFFECTIVE scroll after clamping — callers sync state to this or
+     ;; :scroll drifts past the content and reverse keys eat phantom distance
+     :scroll-used scroll}))
 
 ;; ── pure: chrome ──────────────────────────────────────────────────────────────
 
@@ -210,7 +213,7 @@
         tree-w  (if two? tree-pane-w 0)
         tape-w  (- term-w tree-w)
         tape    (get-in reg [slug :tape])
-        {:keys [lines scroll]}
+        {:keys [lines scroll scroll-used]}
         (if overlay
           ;; overlay {:title :lines} POPS OVER the right pane — chrome, never
           ;; tape content (the view swaps; the tape is untouched). HEAD-anchored
@@ -218,8 +221,9 @@
           (let [ls    (vec (mapcat #(wrap-text % (- tape-w 2)) (:lines overlay)))
                 total (count ls)
                 sc    (max 0 (min scroll (max 0 (- total inner-h))))]
-            {:lines  (vec (take inner-h (drop sc ls)))
-             :scroll {:pos (min total (+ sc inner-h)) :total total}})
+            {:lines       (vec (take inner-h (drop sc ls)))
+             :scroll      {:pos (min total (+ sc inner-h)) :total total}
+             :scroll-used sc})
           (visible-window (tape-lines tape (some? pending) theme (- tape-w 2))
                           inner-h scroll))
         buf     (StringBuilder.)]
@@ -264,9 +268,10 @@
           il        (input-line state reg input term-w)]
       (.append buf (cmp/move-to-s input-row 1))
       (.append buf (:text il))
-      {:s          (str buf)
-       :cursor-row input-row
-       :cursor-col (:cursor-col il)})))
+      {:s           (str buf)
+       :cursor-row  input-row
+       :cursor-col  (:cursor-col il)
+       :scroll-used scroll-used})))
 
 ;; ── pure: byte→logical-key decoder ────────────────────────────────────────────
 
@@ -427,7 +432,15 @@
           ;; frame — `frame` stays pure, headless tests pass :events directly
           s (cond-> s
               (:events-ref s) (assoc :events (vec @(:events-ref s))))
-          {:keys [s cursor-row cursor-col]} (frame @(:registry s) s theme w h)]
+          {:keys [s cursor-row cursor-col scroll-used]} (frame @(:registry s) s theme w h)]
+      ;; sync state to the EFFECTIVE scroll — without this, scrolling past
+      ;; either end inflates :scroll invisibly and the reverse direction eats
+      ;; phantom distance before the view moves (human-found: arrow-up after
+      ;; bottoming out the help overlay)
+      (when scroll-used
+        (swap! state (fn [st] (if (= (:scroll st) scroll-used)
+                                st
+                                (assoc st :scroll scroll-used)))))
       (emit! (str hide-cursor-s s
                   (cmp/move-to-s cursor-row cursor-col)
                   show-cursor-s)))))
