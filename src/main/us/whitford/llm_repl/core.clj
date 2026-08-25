@@ -149,7 +149,16 @@
   (let [sys (or system default-system)
         sys (if preamble?
               (llm/with-preamble (llm/resolve-preamble config) sys)
-              (not-empty sys))]
+              (not-empty sys))
+        ;; session knob → escapement's MODELED :thinking — humans write
+        ;; {:thinking false}, the Request wants {:type :disabled} (which the
+        ;; llamacpp backend wires to chat_template_kwargs enable_thinking;
+        ;; raw false fails Request validation). true ≡ omit ≡ server default
+        ;; (thinking models default ON); a modeled map passes through.
+        thinking (case thinking
+                   false {:type :disabled}
+                   true  nil
+                   thinking)]
     (cond-> {:model                (name model)
              :messages             (mem/render-messages tape)
              :conversation/id      slug

@@ -30,6 +30,11 @@
           :gpt-5.4        {:model/provider :openai}
           :gpt-5.5        {:model/provider :openai}}
 
+ ;; Thinking models (Qwen and friends): reasoning is ON by default. Turn it
+ ;; off per session at the repl with (open! :s {:thinking false}) — or fork
+ ;; the same tape both ways and compare. Only :llamacpp providers can reach
+ ;; this switch; plain OpenAI-compatible endpoints ignore it.
+
  ;; Preamble — text placed at the top of every system prompt.
  ;; Set it here for everything, or per provider, per model, per session.
  ;; The most specific level wins and fully replaces the others:
