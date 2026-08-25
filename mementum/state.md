@@ -126,8 +126,13 @@ restore on exit.
 
 ## Queue (rough order)
 
-1. `:bbin/bin` entry → `llm-repl` on PATH.
-3. Tape persistence (registry → disk; tree survives restart).
-4. Split-pane tape view (watch a second session live).
-5. MCP facade over the same command ns-publics.
-6. LICENSE decision.
+**v0.1.0 TAGGED (at 90a6c36, MIT, Clojars escapement) — pre-released to
+Clojurians Slack for poking. HOLDING for feedback before more surface work;
+let reports drive the next increment.**
+
+1. `:bbin/bin` entry → `llm-repl` on PATH (DEFERRED until feedback says
+   people actually want to install it).
+2. Tape persistence (registry → disk; tree survives restart).
+3. Split-pane tape view (watch a second session live).
+4. MCP facade over the same command ns-publics (compile from `(manual)`).
+5. Compare pane (rides the overlay slot) ⊕ pathom resolvers (3c).
