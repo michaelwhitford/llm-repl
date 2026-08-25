@@ -1,25 +1,26 @@
-{;; llm-repl config (λ configure). Resolution order (later wins):
- ;;   built-in defaults < ~/.config/llm-repl/config.edn < ./config.edn
- ;;   < LLM_REPL_CONFIG=<path> (explicit file override)
- ;; Copy this file to one of those locations and edit.
+{;; llm-repl configuration.
  ;;
- ;; Shape is anima's roster, un-namespaced from S5 WM: providers keyed by kw,
- ;; models keyed by kw, qualified attributes (bare keywords ≡ smell).
+ ;; Copy this file to ~/.config/llm-repl/config.edn and edit it there.
+ ;; If more than one config exists, later ones win:
+ ;;   built-in defaults < ~/.config/llm-repl/config.edn < ./config.edn
+ ;;   < the file named by the LLM_REPL_CONFIG environment variable
 
- ;; ── providers ── :provider/kind dispatches backend construction:
- ;;   :llamacpp — local llama.cpp speaking OpenAI-compat /v1, via the in-house
- ;;               backend (reaches :thinking off, id_slot, cache_prompt — the
- ;;               generic openai path cannot)
- ;;   :codex    — ChatGPT-subscription OAuth (escapement backend; token at
- ;;               ~/.escapement/openai-auth.json — `escapement login codex`)
+ ;; Providers — where completions come from.
+ ;;   :llamacpp  a local llama.cpp server (OpenAI-compatible /v1)
+ ;;   :codex     an OpenAI ChatGPT subscription, via OAuth. Log in once with
+ ;;              `escapement login codex`; the token is stored in
+ ;;              ~/.escapement/openai-auth.json
  :providers {:local  {:provider/kind :llamacpp}
              :openai {:provider/kind :codex}}
 
- ;; ── models ── :model/port required for :llamacpp providers.
- ;; :model/slots pins a :conversation/id to a llama.cpp KV slot (soft
- ;; reservation — a collision costs one re-prefill, never correctness).
- ;; :model/http-timeout-ms defaults 300000; thinking-ON models may need more.
- ;; :model/max-output-tokens defaults 8192 (llama.cpp is unbounded by default).
+ ;; Models — the roster. Open a session on one with (open! :s {:model :name}).
+ ;; For :llamacpp providers :model/port is required — the server's port.
+ ;; Optional, with defaults:
+ ;;   :model/http-timeout-ms    300000  — raise it for slow or thinking models
+ ;;   :model/max-output-tokens  8192
+ ;;   :model/slots              — pin sessions to llama.cpp KV-cache slots for
+ ;;                               faster reuse; a bad pin only costs a
+ ;;                               re-prefill, never a wrong answer
  :models {:qwen36-35b-a3b {:model/provider          :local
                            :model/port              5100
                            :model/http-timeout-ms   900000
@@ -29,24 +30,22 @@
           :gpt-5.4        {:model/provider :openai}
           :gpt-5.5        {:model/provider :openai}}
 
- ;; ── preamble ── text glued to the TOP of every system prompt (λ prompt).
- ;; Inheritance chain, first-present wins (REPLACES, never concatenates):
- ;;   session :preamble > model :model/preamble > provider :provider/preamble
- ;;   > this top-level :preamble
- ;; Absent key ≡ inherit upward. Present false ∨ "" ≡ explicitly none.
- ;; Values: "literal string" | {:file "~/path/to/preamble.txt"} (plain text).
- ;; Put your machine's own boot seed here — the tool ships only a bland
- ;; generic default. Per-session: (open! :s {:preamble "..."}) — and
- ;; {:preamble? false} on a fork still disables the layer entirely
- ;; (the counterfactual boot probe).
+ ;; Preamble — text placed at the top of every system prompt.
+ ;; Set it here for everything, or per provider, per model, per session.
+ ;; The most specific level wins and fully replaces the others:
+ ;;   session > model > provider > this top-level key
+ ;; A missing key inherits from the level above. false or "" means "no
+ ;; preamble". A value is a string, or {:file "~/path/to/text.txt"}.
  :preamble "Be precise and concise. Say when you are unsure. Prefer runnable examples over prose."
- ;; :providers {:local {:provider/preamble "…all local models boot with this…"}}
- ;; :models    {:qwen36-35b-a3b {:model/preamble {:file "~/.config/llm-repl/qwen-boot.txt"}}}
+ ;; Examples:
+ ;;   :providers {:local {:provider/preamble "all local models boot with this"}}
+ ;;   :models    {:qwen36-35b-a3b {:model/preamble {:file "~/.config/llm-repl/qwen-boot.txt"}}}
+ ;;   at the repl: (open! :s {:preamble "just this session"})
+ ;;                (fork! :s :bare {:preamble? false})   ; same tape, no preamble
 
- ;; ── defaults ── the interpreter config an unqualified (open!) session runs;
- ;; every knob overridable per session and per fork.
+ ;; The model a session gets when (open! :s) doesn't name one.
  :default-model :qwen36-35b-a3b
 
- ;; ── nrepl ── the attach surface. Port 0 ≡ ephemeral (written to .nrepl-port
- ;; either way, so editors auto-discover).
+ ;; nREPL attach port. 0 picks a free port. Either way the chosen port is
+ ;; written to .nrepl-port so editors and clients can auto-connect.
  :nrepl {:port 0}}
