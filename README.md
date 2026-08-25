@@ -15,9 +15,11 @@ clients attach to *it*.
 ## Run
 
 ```sh
-bb llm-repl        # interactive terminal → TUI (nREPL port in .nrepl-port)
+bb llm-repl             # interactive terminal → TUI (nREPL port in .nrepl-port)
 bb llm-repl --plain     # line-oriented prompt loop instead of the TUI
 bb nrepl                # headless: nREPL server only (attach-and-drive)
+
+clojure -M:llm-repl     # the same, on JVM Clojure (same flags pass through)
 ```
 
 Runs under **babashka** (primary) or JVM Clojure. Depends on

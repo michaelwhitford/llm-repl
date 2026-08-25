@@ -6,4 +6,7 @@
          com.fulcrologic/escapement {:mvn/version "1.0.1"}
          nrepl/nrepl                {:mvn/version "1.3.1"}}
  :aliases
- {:test {:extra-paths ["src/test"]}}}
+ {;; JVM twin of `bb llm-repl` — args pass through the same way:
+  ;;   clojure -M:llm-repl [--plain | --headless]
+  :llm-repl {:main-opts ["-m" "us.whitford.llm-repl.main"]}
+  :test     {:extra-paths ["src/test"]}}}
