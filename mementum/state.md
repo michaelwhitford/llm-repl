@@ -102,8 +102,15 @@ restore on exit.
   escapement now require a RELEASE, not a sibling edit; bb.edn ∧ deps.edn
   carry the SAME coordinate (keep in sync).
 - guardrails stays pinned 1.2.16 transitively — don't override.
-- `:thinking false` passes escapement's malli validation but the llama.cpp
-  wire rejects the request ("Invalid LLM request") — omit the key instead.
+- Session `{:thinking false}` WORKS (live-verified): build-request normalizes
+  it → modeled `{:type :disabled}` → llamacpp `chat_template_kwargs
+  {enable_thinking false}`; `true` ≡ omit ≡ server default (thinking ON).
+  RECORD CORRECTED: the earlier note blamed "the wire" — wrong; raw `false`
+  failed escapement's Request malli (validate-request returns errors-or-nil,
+  the polarity I misread). Only :llamacpp reaches this switch — escapement's
+  stock openai translator DROPS :thinking (why the custom backend exists;
+  fully extracted from anima: thinking/cache_prompt/id_slot/max_tokens
+  floor-guard all flow config→roster→backend, pure-verified).
 - Config stickiness: `open!` PERSISTS its config; later clean opts merge
   AROUND previously-persisted poison keys (merge only overwrites present
   keys). Symptom: identical error after a "fixed" retry. `drop!` resets.
