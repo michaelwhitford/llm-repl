@@ -77,11 +77,14 @@ restore on exit.
   `(help)` (intercepted — form eval would echo a 60-char ellipsis). tui
   stays core-free: wire layer injects (core/help); compare pane should ride
   the SAME overlay slot.
-- ✅ OPERATOR MANUAL (core tranche): 11 commands tagged `^:manual`;
-  `(manual)` ≡ data compiled from ns-publics ({:name :arglists :doc} — the
-  docstrings ARE the source), `(help)` ≡ string render (RETURNS, never
-  prints — println would corrupt the TUI alt screen). The MCP facade should
-  compile its tool list from `(manual)` — one seam, three surfaces.
+- ✅ OPERATOR MANUAL (core tranche): 13 commands tagged `^{:manual "human
+  sentence"}` — the tag's VALUE is the curated human summary (bare true →
+  docstring first line). TWO AUDIENCES, TWO TEXTS, ONE SEAM: docstrings stay
+  maintainer/agent-dense; `(manual)` ≡ data ({:name :arglists :summary
+  :doc}), `(help)` ≡ human render of :summary (RETURNS, never prints —
+  println would corrupt the TUI alt screen). The MCP facade should compile
+  its tool list from `(manual)` — :summary for tool descriptions, :doc for
+  depth.
 
 ## Invariants worth not rediscovering
 
