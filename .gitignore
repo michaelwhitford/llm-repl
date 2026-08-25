@@ -1,8 +1,9 @@
 .nrepl-port
 .cpcache/
 target/
-.clj-kondo/
+.clj-kondo/*
+!.clj-kondo/config.edn
 .lsp/
 .calva/
-config.edn
+/config.edn
 .DS_Store

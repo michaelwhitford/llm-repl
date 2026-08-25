@@ -1,0 +1,7 @@
+{;; com.fulcrologic.statecharts.promise creates its vars at LOAD time —
+ ;; `(intern *ns* 'await! (deref (resolve 'promesa.core/await!)))` bridges to
+ ;; promesa as a soft dependency. Static analysis can't see runtime-interned
+ ;; vars, so kondo reports unresolved-var at every p/await! call site while
+ ;; the runtime resolves them fine (assert: runtime > source). Scoped to the
+ ;; one namespace that lies to static analysis; everything else stays linted.
+ :linters {:unresolved-var {:exclude [com.fulcrologic.statecharts.promise]}}}
