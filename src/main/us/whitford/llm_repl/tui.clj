@@ -203,15 +203,25 @@
    tree pane (the map you move on — tab walks DFS, the highlight follows) ⊕
    right tape pane (where you are). Narrow: single pane ⊕ sessions strip.
    The impl half only emits this; headless tests assert on it directly."
-  [reg {:keys [slug scroll events pending input] :as state} theme term-w term-h]
+  [reg {:keys [slug scroll events pending input overlay] :as state} theme term-w term-h]
   (let [two?    (>= term-w two-pane-threshold)
         box-h   (max 4 (- term-h (if two? 1 2)))
         inner-h (- box-h 2)
         tree-w  (if two? tree-pane-w 0)
         tape-w  (- term-w tree-w)
         tape    (get-in reg [slug :tape])
-        lines   (tape-lines tape (some? pending) theme (- tape-w 2))
-        {:keys [lines scroll]} (visible-window lines inner-h scroll)
+        {:keys [lines scroll]}
+        (if overlay
+          ;; overlay {:title :lines} POPS OVER the right pane — chrome, never
+          ;; tape content (the view swaps; the tape is untouched). HEAD-anchored
+          ;; window: a document reads top-down, the tape is tail-anchored.
+          (let [ls    (vec (mapcat #(wrap-text % (- tape-w 2)) (:lines overlay)))
+                total (count ls)
+                sc    (max 0 (min scroll (max 0 (- total inner-h))))]
+            {:lines  (vec (take inner-h (drop sc ls)))
+             :scroll {:pos (min total (+ sc inner-h)) :total total}})
+          (visible-window (tape-lines tape (some? pending) theme (- tape-w 2))
+                          inner-h scroll))
         buf     (StringBuilder.)]
     (when two?
       (let [tree-iw (- tree-w 2)
@@ -239,7 +249,7 @@
         (cmp/draw-box buf {:row 1 :col 1 :w tree-w :h box-h
                            :title "tree" :theme theme :body-lines body})))
     (cmp/draw-box buf {:row 1 :col (inc tree-w) :w tape-w :h box-h
-                       :title (title-line state reg)
+                       :title (if overlay (:title overlay) (title-line state reg))
                        :scroll scroll
                        :theme theme
                        :body-lines (vec lines)})
@@ -451,6 +461,19 @@
          (catch Throwable _ nil))
     (when on-stop (try (on-stop) (catch Throwable _ nil)))))
 
+(defn show-overlay!
+  "Pop a document {:title s :lines [s]} OVER the right pane. Content is
+   INJECTED (the wire layer renders it — this ns stays core-free, and any
+   future overlay — compare pane, manual pages — rides the same slot).
+   Esc dismisses; PgUp/PgDn scroll (head-anchored)."
+  [state overlay]
+  (swap! state assoc :overlay overlay :scroll 0 :render-dirty true))
+
+(defn dismiss-overlay!
+  "Drop the overlay; the right pane returns to the tape (scroll reset)."
+  [state]
+  (swap! state #(-> % (dissoc :overlay) (assoc :scroll 0 :render-dirty true))))
+
 (defn cycle-slug!
   "Point the TUI at the next session in DFS TREE order (wraps) — tab movement
    tracks the tree pane's shape, so cycling FEELS like walking the tree."
@@ -467,7 +490,7 @@
   "The input thread body: raw mode, then decode→dispatch until quit.
    Loop-level keys (session/viewport/quit) here; editing keys → edit-step.
    `on-submit` ≡ (fn [text]) — the wire layer decides chat vs form."
-  [{:keys [^Terminal terminal state on-submit] :as h}]
+  [{:keys [^Terminal terminal state on-submit on-help] :as h}]
   (.enterRawMode terminal)
   (let [rdr   ^NonBlockingReader (.reader terminal)
         read! (fn [t] (if (pos? ^long t) (.read rdr (long t)) (.read rdr)))
@@ -477,6 +500,20 @@
         (cond
           (contains? #{:eof :ctrl-c :ctrl-d} k)
           (do (stop! h) (System/exit 0))
+
+          ;; Esc: overlay-first (dismiss), else the editor's clear-buffer
+          (= k :esc)
+          (if (:overlay @state)
+            (dismiss-overlay! state)
+            (swap! state (fn [s] (-> s (assoc :input (:input (edit-step (:input s) k)))
+                                     (assoc :render-dirty true)))))
+
+          ;; ? on an EMPTY buffer (and not mid-paste) → help overlay
+          (and (= k [:char \?])
+               on-help
+               (str/blank? (get-in @state [:input :buffer]))
+               (not (get-in @state [:input :paste?])))
+          (on-help)
 
           (= k :tab)  (cycle-slug! state)
           (= k :pgup) (swap! state #(-> % (update :scroll + (page)) (assoc :render-dirty true)))
@@ -500,7 +537,7 @@
    `events` ≡ core's events* atom (BOTH referenced, not copied — the frame
    reads them live; every client's receipts show, not just this surface's).
    Caller must check interactive-terminal? first."
-  [{:keys [registry events slug nrepl-port on-stop on-submit]}]
+  [{:keys [registry events slug nrepl-port on-stop on-submit on-help]}]
   (let [terminal (-> (TerminalBuilder/builder) (.system true) (.build))
         state    (atom {:registry     registry
                         :events-ref   events
@@ -519,7 +556,8 @@
                   :theme     (theme/theme-for (theme/color-capability true))
                   :stopped?  (atom false)
                   :on-stop   on-stop
-                  :on-submit on-submit}]
+                  :on-submit on-submit
+                  :on-help   on-help}]
     (emit! (str alt-screen-on-s clear-screen-s hide-cursor-s paste-on-s))
     (render-frame! h)
     (start-ticker! h)

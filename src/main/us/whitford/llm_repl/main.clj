@@ -143,19 +143,36 @@
   (when-not (and (map? res) (:repl/id res))
     (core/event! (str "=> " (ellipsize (pr-str res) 60)))))
 
+(defn- show-help!
+  "The TUI help overlay: (core/help) rendered OVER the right pane (a view
+   swap — the tape is untouched; chrome never enters the tape). The wire
+   layer renders because tui stays core-free — content is injected."
+  [h]
+  (tui/show-overlay! (:state h)
+                     {:title "help · esc dismisses"
+                      :lines (str/split-lines (core/help))}))
+
 (defn- tui-submit!
   "The submission dispatch — same grammar as the plain loop, but every branch
    runs on a WORKER thread so the UI stays live (pending marker meanwhile;
    the plain loop blocks here, the TUI does not). Receipts flow through
    core/events* — the SAME stream attached clients write — never a TUI-local
-   side channel (equal clients in the chrome layer too)."
+   side channel (equal clients in the chrome layer too). `(help)` is
+   intercepted to the overlay (evaluating it would echo a 60-char ellipsis —
+   useless; nREPL clients call core/help directly and get the string)."
   [h text]
   (let [state (:state h)]
-    (if (str/starts-with? text "(")
+    (cond
+      (= (str/trim text) "(help)")
+      (show-help! h)
+
+      (str/starts-with? text "(")
       (future
         (try (binding [*ns* (find-ns 'us.whitford.llm-repl.main)]
                (form-echo! (eval (read-string text))))
              (catch Throwable t (core/event! (str "error: " (ex-message t))))))
+
+      :else
       (let [slug (:slug @state)]
         (swap! state assoc :pending slug :render-dirty true)
         (future
@@ -179,6 +196,7 @@
                         ;; deferred handle: the input thread starts inside
                         ;; start!, before we hold h — close over the promise
                         :on-submit  (fn [text] (tui-submit! @h* text))
+                        :on-help    (fn [] (show-help! @h*))
                         :on-stop    (fn []
                                       (remove-watch core/sessions* ::tui)
                                       (remove-watch core/events* ::tui))})]
