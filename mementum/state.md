@@ -64,8 +64,12 @@ restore on exit.
   narrow mode has NO event display (footer home ≡ tree pane only). Needs a
   TUI restart to take effect — core hot-reload alone won't rewire watches.
   Still queued: compare pane (children side-by-side, config deltas), pathom
-  resolvers (3c), AI operator-manual layer (compiled from ns-publics;
-  curated via ^:manual meta).
+  resolvers (3c), TUI help overlay.
+- ✅ OPERATOR MANUAL (core tranche): 11 commands tagged `^:manual`;
+  `(manual)` ≡ data compiled from ns-publics ({:name :arglists :doc} — the
+  docstrings ARE the source), `(help)` ≡ string render (RETURNS, never
+  prints — println would corrupt the TUI alt screen). The MCP facade should
+  compile its tool list from `(manual)` — one seam, three surfaces.
 
 ## Invariants worth not rediscovering
 
