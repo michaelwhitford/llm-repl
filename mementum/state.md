@@ -76,7 +76,10 @@ restore on exit.
   before the view moves; `?` on empty buffer or
   `(help)` (intercepted — form eval would echo a 60-char ellipsis). tui
   stays core-free: wire layer injects (core/help); compare pane should ride
-  the SAME overlay slot.
+  the SAME overlay slot. Form *out*/*err* is CAPTURED (raw stdout ≡ alt
+  screen ≡ painted over): non-blank output → overlay titled with the form;
+  the value stays a footer receipt. Rule of thumb: stdout NEVER survives in
+  the TUI — every surface needs banner/output in its OWN idiom.
 - ✅ OPERATOR MANUAL (core tranche): 13 commands tagged `^{:manual "human
   sentence"}` — the tag's VALUE is the curated human summary (bare true →
   docstring first line). TWO AUDIENCES, TWO TEXTS, ONE SEAM: docstrings stay
