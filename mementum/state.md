@@ -70,7 +70,10 @@ restore on exit.
   tape untouched — the VIEW swaps, chrome never enters the tape). Esc
   dismisses (overlay-first, else editor clear); arrows line-scroll, PgUp/PgDn
   page — scroll-view! owns the per-kind SIGN FLIP (tape tail-anchored,
-  overlay head-anchored; keys stay direction-literal); `?` on empty buffer or
+  overlay head-anchored; keys stay direction-literal); frame returns
+  :scroll-used (EFFECTIVE, clamped) and render-frame! syncs state to it —
+  else scroll drifts past content and reverse keys eat phantom distance
+  before the view moves; `?` on empty buffer or
   `(help)` (intercepted — form eval would echo a 60-char ellipsis). tui
   stays core-free: wire layer injects (core/help); compare pane should ride
   the SAME overlay slot.
