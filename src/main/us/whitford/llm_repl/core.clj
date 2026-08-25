@@ -247,13 +247,17 @@
 
 (defn ^:manual help
   "Human rendering of (manual): one entry per command — name, arglists, first
-   docstring line. Returns a STRING (caller prints; a println here would
-   corrupt the TUI's alt screen). Full docs: (manual), or (:doc (meta #'cmd))."
+   TWO docstring lines (the overlay pane scrolls; two lines carry the shape
+   of a command, one carried only its opening clause). Returns a STRING
+   (caller prints; a println here would corrupt the TUI's alt screen).
+   Full docs: (manual), or (:doc (meta #'cmd))."
   []
   (->> (manual)
        (map (fn [{:keys [name arglists doc]}]
               (str (format "%-14s" name) " " (pr-str arglists) "\n"
-                   "    " (first (str/split-lines (or doc ""))))))
+                   (->> (take 2 (str/split-lines (or doc "")))
+                        (map #(str "    " (str/trim %)))
+                        (str/join "\n")))))
        (str/join "\n")))
 
 (defn ^:manual drop!
