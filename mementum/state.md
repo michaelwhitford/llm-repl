@@ -159,9 +159,11 @@ restore on exit.
 
 ## Queue (rough order)
 
-**v0.1.0 TAGGED (at 90a6c36, MIT, Clojars escapement) — pre-released to
-Clojurians Slack for poking. HOLDING for feedback before more surface work;
-let reports drive the next increment.**
+**v0.2.0 TAGGED ∧ ANNOUNCED (Clojurians Slack) — the self-eval release:
+:tools knob, clojure_eval, environment orientation, config machine-fact,
+README § Self-eval. (v0.1.0 was 90a6c36 — pre-release, MIT, Clojars
+escapement.) Feedback-driven from here; self-eval is the likely
+conversation starter.**
 
 1. `:bbin/bin` entry → `llm-repl` on PATH (DEFERRED until feedback says
    people actually want to install it).
