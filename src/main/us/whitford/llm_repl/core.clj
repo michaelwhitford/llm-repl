@@ -229,15 +229,28 @@
            :forked-at   (:forked-at s)})
         @sessions*))
 
+(defonce ^{:doc "Namespaces the manual compiles from — an OPEN SLOT (λ extend):
+   a surface with its own operator commands registers its ns here at load
+   (main adds itself for use!). One manual; banner, (help), overlay, and the
+   MCP facade all print the same curated truth."}
+  manual-namespaces*
+  (atom '[us.whitford.llm-repl.core]))
+
+(defn register-manual-ns!
+  "Add `ns-sym` to the manual's compile set (idempotent)."
+  [ns-sym]
+  (swap! manual-namespaces* #(vec (distinct (conj % ns-sym)))))
+
 (defn ^{:manual "The command manual as data — for agents and tools."} manual
-  "The operator manual AS DATA (λ glass): every `^:manual` command in this ns
-   as {:name :arglists :doc} — COMPILED from ns-publics, never hand-written
-   (structure > instruction: the docstrings are the source of truth; tagging
-   curates the operator surface out of the plumbing). The ONE seam agent
-   surfaces derive from — (help) renders it, the MCP facade will compile its
-   tool list from it."
+  "The operator manual AS DATA (λ glass): every `^:manual` command across the
+   registered namespaces as {:name :arglists :summary :doc} — COMPILED from
+   ns-publics, never hand-written (structure > instruction: the metadata is
+   the source of truth; tagging curates the operator surface out of the
+   plumbing). The ONE seam agent surfaces derive from — (help) renders it,
+   the MCP facade will compile its tool list from it."
   []
-  (->> (ns-publics 'us.whitford.llm-repl.core)
+  (->> @manual-namespaces*
+       (mapcat (comp ns-publics find-ns))
        (keep (fn [[sym v]]
                (let [m  (meta v)
                      mn (:manual m)]

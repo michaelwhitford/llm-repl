@@ -36,7 +36,7 @@
   tui*
   (atom nil))
 
-(defn use!
+(defn ^{:manual "Point the prompt/TUI at a session, creating it if needed."} use!
   "Point the human surface at `slug` (opening it if needed, `opts` forwarded)
    — the plain loop's current session AND the TUI's focus when active.
    Returns the session's compact index entry."
@@ -71,22 +71,22 @@
 
 ;; ── terminal loop ─────────────────────────────────────────────────────────────
 
+;; this ns carries its own operator command (use!) — register it so the ONE
+;; manual (banner ∧ (help) ∧ overlay ∧ future MCP facade) includes it
+(core/register-manual-ns! 'us.whitford.llm-repl.main)
+
 (defn- commands
-  "The command surface, enumerated (ns-publics ≡ the contract) — what the
-   banner prints and what a TUI palette/MCP facade would generate from."
+  "The CURATED command surface — (core/manual), the same compile the help
+   overlay and (help) render. Plumbing stays out of the banner."
   []
-  (->> (merge (ns-publics 'us.whitford.llm-repl.core)
-              (select-keys (ns-publics 'us.whitford.llm-repl.main) ['use!]))
-       (remove (fn [[_ v]] (:private (meta v))))
-       (map key)
-       sort))
+  (map :name (core/manual)))
 
 (defn- banner [nrepl-port]
   (println "llm-repl — the tape is the value; fork is free.")
   (println (str "  model    " (roster/default-model)))
   (println (str "  nREPL    127.0.0.1:" nrepl-port "  (.nrepl-port written — attach any client)"))
   (println (str "  attach   (require '[us.whitford.llm-repl.core :refer :all])"))
-  (println (str "  commands " (str/join " " (commands))))
+  (println (str "  commands " (str/join " " (commands)) "  — (println (help)) for details"))
   (println      "  loop     bare text → eval! on the current session | (form) → clojure | :q → quit"))
 
 (defn- prompt []
