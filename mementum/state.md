@@ -84,7 +84,9 @@ restore on exit.
   :doc}), `(help)` ≡ human render of :summary (RETURNS, never prints —
   println would corrupt the TUI alt screen). The MCP facade should compile
   its tool list from `(manual)` — :summary for tool descriptions, :doc for
-  depth.
+  depth. OPEN SLOT: `manual-namespaces*` ⊕ `register-manual-ns!` — a surface
+  with its own commands registers its ns at load (main does, for `use!`);
+  banner ≡ (help) ≡ overlay ≡ facade, one compile.
 
 ## Invariants worth not rediscovering
 
