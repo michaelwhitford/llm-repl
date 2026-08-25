@@ -90,6 +90,27 @@ restore on exit.
   depth. OPEN SLOT: `manual-namespaces*` ⊕ `register-manual-ns!` — a surface
   with its own commands registers its ns at load (main does, for `use!`);
   banner ≡ (help) ≡ overlay ≡ facade, one compile.
+- ✅ SELF-EVAL TOOL (accretion #3, live-verified): `:tools` config knob arms
+  a tool loop — the model driven BY the repl becomes a client OF it (closes
+  equal-clients: human ∧ editor ∧ model drive the same runtime). One tool,
+  `:clojure/eval` (`tools.clj`): `load-string` in the HOST process — *out*
+  captured, timeout ∧ truncation ∧ errors all AS DATA; description names the
+  bootstrap move (require core → `(help)`), never enumerates (manual seam ≡
+  truth). Registry `tools/tool-registry*` ≡ open slot (twin of
+  `manual-namespaces*`) — hosts register more (anima: its granted app-query).
+  Loop (`tool-complete`, sibling of `plain-complete`; `default-complete`
+  routes): send ⊕ :tools → dispatch tool_use → tool_results → resend, until
+  text ∨ budget(8 → teaching refusal, ONE final inference). Loop-LOCAL
+  messages: the tape only ever sees user ⊕ final text — shape stable, prefix
+  cacheable, chat-memory/compaction untouched, rf ∧ all four drivers
+  unchanged (tools ride bounce!/trampoline!/battery! for free). Wire ≡ free:
+  escapement models the whole vocabulary (`tools.protocol` ⊕ openai
+  translator round-trips tool_calls; llamacpp backend rides them — probe ✓
+  against qwen :5100). Every dispatch → `⚡ slug code-preview` receipt (the
+  receipt IS the trace; payload persistence deferred). Live receipt: model
+  computed Σ(p²) first-20-primes = 30007 via tool (CORRECT — the human-side
+  verifier was the buggy one) and observed ITSELF mid-turn at depth 1
+  (persist-user-first, seen from inside).
 
 ## Invariants worth not rediscovering
 
