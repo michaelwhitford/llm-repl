@@ -110,7 +110,16 @@ restore on exit.
   receipt IS the trace; payload persistence deferred). Live receipt: model
   computed Σ(p²) first-20-primes = 30007 via tool (CORRECT — the human-side
   verifier was the buggy one) and observed ITSELF mid-turn at depth 1
-  (persist-user-first, seen from inside).
+  (persist-user-first, seen from inside). ENVIRONMENT ORIENTATION
+  (`tools-system`, human-ratified need): armed sessions get a system-prompt
+  paragraph saying WHERE THE MODEL LIVES (tool descriptions carry mechanics;
+  the system prompt carries identity — the chat template expands tool defs,
+  it cannot provide situation). Appended in tool-complete, NEVER
+  build-request: orientation rides iff defs are actually on the wire (a
+  depth-guarded nested completion must not claim a tool it lacks; unarmed
+  ab! arms stay clean). Live receipt: asked \"where are you running?\", the
+  model EVALED its way to proof (java props, resolved core/help) — \"not a
+  sandbox or simulation\".
 
 ## Invariants worth not rediscovering
 
