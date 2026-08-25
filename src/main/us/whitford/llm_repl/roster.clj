@@ -84,6 +84,15 @@
   []
   (:default-model (config)))
 
+(defn default-tools
+  "The :tools default an unqualified session runs — config root :tools
+   (true ≡ every registered tool | [kw …] ≡ whitelist | absent/nil ≡ none).
+   Read at core load like :default-model — armed-ness becomes a MACHINE
+   fact that survives restarts, not a per-boot ritual; any session still
+   overrides per open!/fork! ({:tools nil} disarms)."
+  []
+  (:tools (config)))
+
 ;; ── roster lookup (fail loud — λ escalate; a silent default masks a typo) ─────
 
 (defn- model-entry

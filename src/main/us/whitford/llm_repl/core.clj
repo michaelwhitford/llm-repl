@@ -117,7 +117,7 @@
    :preamble?   true
    :thinking    nil
    :temperature nil
-   :tools       nil})
+   :tools       (llm/default-tools)})
 
 (def config-keys
   "The interpreter knobs a caller may set at open/eval/fork — merged into the

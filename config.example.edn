@@ -51,6 +51,18 @@
  ;; The model a session gets when (open! :s) doesn't name one.
  :default-model :qwen36-35b-a3b
 
+ ;; Tools — arm sessions with the self-eval tool by default.
+ ;;   true            every registered tool (today: clojure_eval — the model
+ ;;                   can evaluate Clojure in the repl that hosts it, and
+ ;;                   drive the session commands through it)
+ ;;   [:clojure/eval] an explicit whitelist
+ ;;   absent or nil   no tools; arm per session instead:
+ ;;                     (open! :s {:tools true})
+ ;; Armed sessions also get a system-prompt line telling the model where it
+ ;; lives. Disarm any one session with (open! :s {:tools nil}) — or fork the
+ ;; same tape both ways and compare.
+ ;; :tools true
+
  ;; nREPL attach port. 0 picks a free port. Either way the chosen port is
  ;; written to .nrepl-port so editors and clients can auto-connect.
  :nrepl {:port 0}}

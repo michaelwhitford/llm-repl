@@ -119,7 +119,10 @@ restore on exit.
   depth-guarded nested completion must not claim a tool it lacks; unarmed
   ab! arms stay clean). Live receipt: asked \"where are you running?\", the
   model EVALED its way to proof (java props, resolved core/help) — \"not a
-  sandbox or simulation\".
+  sandbox or simulation\". RESTART LESSON: sessions* is memory — arming via
+  open! dies with the process (the human hit this). Config root `:tools`
+  (roster/default-tools → default-config, twin of :default-model) makes
+  armed-ness a MACHINE fact; per-session {:tools nil} still disarms.
 
 ## Invariants worth not rediscovering
 
