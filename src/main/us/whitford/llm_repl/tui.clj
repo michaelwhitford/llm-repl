@@ -474,6 +474,21 @@
   [state]
   (swap! state #(-> % (dissoc :overlay) (assoc :scroll 0 :render-dirty true))))
 
+(defn scroll-view!
+  "Move the right-pane view `n` lines, dir ∈ {:up :down} — SCREEN semantics,
+   constant across body kinds: the tape is TAIL-anchored (scroll+ ≡ toward
+   older turns ≡ up) while an overlay is HEAD-anchored (scroll+ ≡ further
+   down the document), so the sign flips per kind here, in ONE place —
+   key handlers stay direction-literal."
+  [state dir n]
+  (swap! state (fn [s]
+                 (let [sign (if (:overlay s)
+                              (if (= dir :up) - +)
+                              (if (= dir :up) + -))]
+                   (-> s
+                       (update :scroll #(max 0 (sign % n)))
+                       (assoc :render-dirty true))))))
+
 (defn cycle-slug!
   "Point the TUI at the next session in DFS TREE order (wraps) — tab movement
    tracks the tree pane's shape, so cycling FEELS like walking the tree."
@@ -516,8 +531,13 @@
           (on-help)
 
           (= k :tab)  (cycle-slug! state)
-          (= k :pgup) (swap! state #(-> % (update :scroll + (page)) (assoc :render-dirty true)))
-          (= k :pgdn) (swap! state #(-> % (update :scroll (fn [n] (max 0 (- n (page))))) (assoc :render-dirty true)))
+          (= k :pgup) (scroll-view! state :up (page))
+          (= k :pgdn) (scroll-view! state :down (page))
+
+          ;; overlay: arrows scroll LINE-BY-LINE (the editor's history walk
+          ;; is meaningless under an overlay; it resumes on dismiss)
+          (and (contains? #{:up :down} k) (:overlay @state))
+          (scroll-view! state k 1)
 
           :else
           (let [submitted (volatile! nil)]
