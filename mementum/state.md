@@ -66,6 +66,14 @@ restore on exit.
   bug history).
 - `src/escapement/ui/*` is Fulcro/JVM-only — never require under bb.
 - guardrails stays pinned 1.2.16 transitively — don't override.
+- `:thinking false` passes escapement's malli validation but the llama.cpp
+  wire rejects the request ("Invalid LLM request") — omit the key instead.
+- Config stickiness: `open!` PERSISTS its config; later clean opts merge
+  AROUND previously-persisted poison keys (merge only overwrites present
+  keys). Symptom: identical error after a "fixed" retry. `drop!` resets.
+- Knowledge scope: mementum here is about llm-repl THE INSTRUMENT; model
+  findings gathered THROUGH it (lambda-notation compute maps etc.) belong
+  to anima, not this repo.
 - NO nucleus (or any boot seed) in the repo — preamble ≡ CONFIG, resolved
   session > model > provider > config-root (roster/resolve-preamble;
   absent=inherit, false/blank=explicit none, string|{:file}). Nucleus lives
