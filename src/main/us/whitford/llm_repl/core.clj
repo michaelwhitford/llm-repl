@@ -68,8 +68,10 @@
    [clojure.string :as str]
    [com.fulcrologic.statecharts.promise :as p]
    [escapement.llm.protocol :as proto]
+   [escapement.tools.protocol :as tp]
    [us.whitford.llm-repl.chat-memory :as mem]
-   [us.whitford.llm-repl.roster :as llm]))
+   [us.whitford.llm-repl.roster :as llm]
+   [us.whitford.llm-repl.tools :as tools]))
 
 ;; ── registry (Option A: named accumulators carry their interpreter config) ────
 
@@ -114,7 +116,8 @@
    :system      default-system
    :preamble?   true
    :thinking    nil
-   :temperature nil})
+   :temperature nil
+   :tools       nil})
 
 (def config-keys
   "The interpreter knobs a caller may set at open/eval/fork — merged into the
@@ -122,8 +125,12 @@
    :preamble ≡ a per-session boot-text override (string | {:file path} |
    false ≡ none); absent inherits model > provider > config chain
    (roster/resolve-preamble). :preamble? stays the apply-or-not boolean —
-   the counterfactual knob."
-  [:model :system :preamble :preamble? :thinking :temperature])
+   the counterfactual knob. :tools arms the SELF-EVAL loop (accretion #3):
+   true ≡ every registered tool | [kw …] ≡ whitelist from tools/tool-registry*
+   | nil/absent ≡ none (plain completion, anima behavior). Persisted like any
+   knob — forkable, ab!-able: (ab! :s {:bare {:tools nil} :armed {:tools true}}
+   probe) is the does-the-tool-help counterfactual."
+  [:model :system :preamble :preamble? :thinking :temperature :tools])
 
 ;; ── pure tape mechanics (no backend, no booted system) ────────────────────────
 
@@ -186,18 +193,182 @@
 
 ;; ── the IO seam (injected — default ≡ the config-roster backend) ──────────────
 
-(defn default-complete
+(defn- session-backend
+  "The roster backend for a session — the ONE construction expression, shared
+   by the plain and tool paths (built INSIDE the step so a failure is caught
+   by the driver's try → error-as-data, never a construction-time throw)."
+  [config slug]
+  (llm/wrapped-backend (:model config)
+                       {:priority :priority/normal
+                        :slug     (str "repl-" (name slug))}))
+
+(defn plain-complete
   "config ⊕ slug → (fn [tape] → reply-text): build the request, send it at the
    backend seam through the roster backend (built from the config file), await,
-   extract the assistant text. Injectable — tests pass their own :complete-fn;
-   an embedding host injects its arbitered/wrapped backend here (open slot)."
+   extract the assistant text. The tool-less path (anima's default-complete
+   verbatim — lineage); `default-complete` routes here unless :tools is armed."
   [config slug]
   (fn [tape]
-    (let [backend  (llm/wrapped-backend (:model config)
-                                        {:priority :priority/normal
-                                         :slug     (str "repl-" (name slug))})
+    (let [backend  (session-backend config slug)
           response (p/await! (proto/send-turn backend (build-request config slug tape)))]
       (assistant-text response))))
+
+;; ── the self-eval tool loop (STANDALONE accretion #3 — the model as client) ───
+;;
+;; The model driven BY this repl becomes a client OF it: config :tools puts
+;; tool definitions (tools/tool-registry*, escapement's public tools layer) on
+;; the wire; tool_use blocks round-trip through tp/dispatch INSIDE the step —
+;; the WHNF→normalization loop the eval-rf docstring anticipated. The TAPE
+;; only ever sees user_turn ⊕ final_text: the inner exchange is loop-local
+;; (shape stable → prefix cacheable → compaction untouched; rf contract and
+;; all four drivers unchanged). The receipts are the record — every dispatch
+;; emits ⚡ so attached surfaces watch the model work (equal clients at both
+;; layers). Honest caveat: a tool turn bends `messages[] ≡ truth` — evals are
+;; effectful, replay from the tape alone won't reproduce (the receipt stream
+;; is the trace; payload persistence is a deferred fork).
+
+(def tool-bounce-budget
+  "Max tool round-trips inside ONE completion turn. At the boundary every
+   pending call is refused with a teaching tool_result (anima's s049 move:
+   make the wrong next move unreachable — the only reachable act left is the
+   final text) and the model gets exactly one more inference."
+  8)
+
+(def ^:dynamic *tool-depth*
+  "Re-entrancy guard. The eval tool hands the model eval! itself — an armed
+   session eval!-ing an armed session would nest tool loops without bound.
+   Bound (inc'd) around each tool loop; conveyed through eval-code's future
+   into any nested driver call (bb futures convey bindings — live-verified),
+   where default-complete sees it and routes the nested completion PLAIN.
+   Depth 1 of self-reference is the feature; depth 2+ is the fork bomb."
+  0)
+
+(def ^:private tool-budget-refusal
+  (str "TOOL BUDGET EXHAUSTED — this call was refused; no result. "
+       "Your next response is your final one: answer in plain text from "
+       "what you already have. Do not call any tool."))
+
+(defn- session-tools
+  "config :tools → the Tool records this session exposes. true ≡ all
+   registered; [kw …] ≡ whitelist (unknown kw throws — caught by the driver
+   as error-data, and the message lists what IS registered: λ mirror)."
+  [tools-cfg]
+  (cond
+    (true? tools-cfg)
+    (tp/all-tools tools/tool-registry*)
+
+    (sequential? tools-cfg)
+    (mapv (fn [kw]
+            (or (tp/lookup tools/tool-registry* kw)
+                (throw (ex-info (str "unknown tool " kw " — registered: "
+                                     (mapv tp/tool-name (tp/all-tools tools/tool-registry*)))
+                                {:tool kw}))))
+          tools-cfg)
+
+    :else nil))
+
+(defn- tool-wire
+  "Tool records → {:defs [anthropic-tool-def …] :name->kw {wire-name kw}} —
+   the defs ride Request :tools; the index routes a tool_use block's string
+   name back to the registry keyword (tp encodes :clojure/eval as
+   \"clojure_eval\" on the wire)."
+  [ts]
+  (reduce (fn [acc t]
+            (let [d (tp/tool->anthropic-tool-def t)]
+              (-> acc
+                  (update :defs conj d)
+                  (update :name->kw assoc (:name d) (tp/tool-name t)))))
+          {:defs [] :name->kw {}}
+          ts))
+
+(defn- receipt-preview
+  "First ~24 display chars of a tool input for the ⚡ receipt (the tree-pane
+   footer is receipt-width; the code preview IS the trace index)."
+  [input]
+  (let [s (str/replace (str (or (:code input) (pr-str input))) #"\s+" " ")]
+    (if (> (count s) 24) (str (subs s 0 24) "…") s)))
+
+(defn- dispatch-tool!
+  "One tool_use block → tp/dispatch (malli-gated, throw-caught upstream) ⊕ a
+   ⚡ receipt. Unknown wire names return error-data (the model reads and
+   corrects — λ mirror)."
+  [slug name->kw {:keys [name input]}]
+  (if-let [kw (get name->kw name)]
+    (do (event! (str "⚡ " slug " " (receipt-preview input)))
+        (tp/dispatch tools/tool-registry* kw input))
+    {:result (str "no such tool: " name) :is-error true}))
+
+(defn- tool-result-block
+  "tool_use block ⊕ dispatch result → the :tool_result content block the
+   next user message carries back (escapement's modeled shape — the openai
+   translator expands it to a role:tool message on the wire)."
+  [{:keys [id]} {:keys [result is-error]}]
+  {:type :tool_result :tool_use_id id :content result :is-error (boolean is-error)})
+
+(defn tool-complete
+  "config ⊕ slug → (fn [tape] → reply-text) — plain-complete's tool-bearing
+   sibling: the chart-free tool loop at function grain (escapement's own loop
+   lives inside the llm-conversation invocation processor — the chart grain
+   this ns already rejected; pattern copied, not called).
+
+   Loop: send(request ⊕ :tools) → tool_use blocks? → dispatch each →
+   append assistant(content) ⊕ user(tool_results) to the LOOP-LOCAL messages →
+   resend … until a text-only response ∨ the bounce budget (then: refuse-all
+   with the teaching result, one final inference, take its text either way).
+   Branches on block PRESENCE, not :stop-reason (robust to template drift)."
+  [config slug]
+  (fn [tape]
+    (binding [*tool-depth* (inc *tool-depth*)]
+      (let [{:keys [defs name->kw]} (tool-wire (session-tools (:tools config)))
+            backend (session-backend config slug)
+            base    (assoc (build-request config slug tape) :tools defs)
+            send!   (fn [messages]
+                      (p/await! (proto/send-turn backend (assoc base :messages messages))))]
+        (loop [messages (:messages base)
+               bounce   0]
+          (let [response (send! messages)
+                uses     (filterv #(= :tool_use (:type %)) (:content response))]
+            (cond
+              (empty? uses)
+              (assistant-text response)
+
+              (>= bounce tool-bounce-budget)
+              (let [refusals (mapv #(tool-result-block % {:result tool-budget-refusal :is-error true})
+                                   uses)
+                    _        (event! (str "⚡ " slug " budget! " bounce "↯"))
+                    final    (send! (conj messages
+                                          {:role :assistant :content (:content response)}
+                                          {:role :user :content refusals}))]
+                ;; take whatever text came back — if the model STILL calls
+                ;; tools, the empty reply is loud in the tape (λ antifragile)
+                (assistant-text final))
+
+              :else
+              (recur (conj messages
+                           {:role :assistant :content (:content response)}
+                           {:role :user :content (mapv #(tool-result-block
+                                                         % (dispatch-tool! slug name->kw %))
+                                                       uses)})
+                     (inc bounce)))))))))
+
+(defn default-complete
+  "config ⊕ slug → (fn [tape] → reply-text): THE injected-IO default — routes
+   to `tool-complete` when the session arms :tools (and we are not already
+   inside a tool eval — `*tool-depth*` conveys through the eval future, so a
+   nested eval!/bounce! from model-written code completes PLAIN: depth 1 of
+   self-reference is the feature, unbounded nesting is not), else
+   `plain-complete`. Injectable — tests pass their own :complete-fn; an
+   embedding host injects its arbitered/wrapped backend here (open slot)."
+  [config slug]
+  (let [plain (plain-complete config slug)]
+    (if (:tools config)
+      (let [tooled (tool-complete config slug)]
+        (fn [tape]
+          (if (pos? *tool-depth*)
+            (do (event! (str "⚡ " slug " depth-guard→plain"))
+                (plain tape))
+            (tooled tape))))
+      plain)))
 
 ;; ── lifecycle + observability ─────────────────────────────────────────────────
 
