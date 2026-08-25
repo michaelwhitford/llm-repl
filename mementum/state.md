@@ -93,6 +93,9 @@ restore on exit.
 - esc-seq-timeout 50ms MUST be >0 (CSI tail misread as bare ESC — escapement
   bug history).
 - `src/escapement/ui/*` is Fulcro/JVM-only — never require under bb.
+- escapement ≡ Clojars artifact (1.0.1, no more :local/root): changes to
+  escapement now require a RELEASE, not a sibling edit; bb.edn ∧ deps.edn
+  carry the SAME coordinate (keep in sync).
 - guardrails stays pinned 1.2.16 transitively — don't override.
 - `:thinking false` passes escapement's malli validation but the llama.cpp
   wire rejects the request ("Invalid LLM request") — omit the key instead.
