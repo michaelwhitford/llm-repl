@@ -3,5 +3,6 @@
 target/
 .clj-kondo/
 .lsp/
+.calva/
 config.edn
 .DS_Store
