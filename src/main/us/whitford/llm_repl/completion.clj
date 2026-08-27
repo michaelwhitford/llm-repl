@@ -219,7 +219,7 @@
        "guessing: the repl's answer is ground truth. You are session {slug} "
        "of that repl — (repl/snapshot {slug}) returns this very "
        "conversation. To inspect or drive the repl itself: "
-       "(require '[us.whitford.llm-repl.core :as repl]) then (repl/help) "
+       "(require '[us.whitford.llm-repl :as repl]) then (repl/help) "
        "lists the session commands — sessions, tapes, forks."))
 
 (defn with-tools-system

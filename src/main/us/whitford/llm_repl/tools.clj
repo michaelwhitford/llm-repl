@@ -103,7 +103,7 @@
          "string of Clojure forms; the printed value of the last form returns, "
          "with any stdout ahead of it. Errors return as text — read and "
          "correct. First move for session commands: "
-         "(require '[us.whitford.llm-repl.core :as repl]) then (repl/help) — "
+         "(require '[us.whitford.llm-repl :as repl]) then (repl/help) — "
          "fork!, bounce!, sessions-list and the rest are documented there."))
   (input-schema [_] [:map {:closed true} [:code :string]])
   (invoke [_ {:keys [code]}]

@@ -20,10 +20,10 @@
    [clojure.string :as str]
    [us.whitford.llm-repl.client :as client]
    [us.whitford.llm-repl.daemon :as daemon]
-   ;; :refer :all — deliberate: THIS ns is the loop's eval surface; every core
-   ;; command must resolve bare in a typed (form). The alias stays for main's
-   ;; own code (reads qualified).
-   [us.whitford.llm-repl.core :as core :refer :all]
+   ;; :refer :all — deliberate: THIS ns is the loop's eval surface; every api
+   ;; command must resolve bare in a typed (form). The `core` alias stays for
+   ;; main's own code (reads qualified) — full short-name rewire is step 6.
+   [us.whitford.llm-repl :as core :refer :all]
    [us.whitford.llm-repl.roster :as roster]
    [us.whitford.llm-repl.tui :as tui]))
 
@@ -93,7 +93,7 @@
   (println (str "  model    " (roster/default-model)))
   (println (str "  nREPL    " (get-in (roster/config) [:nrepl :bind] "127.0.0.1") ":" nrepl-port
                 "  (.nrepl-port written — attach any client)"))
-  (println (str "  attach   (require '[us.whitford.llm-repl.core :refer :all])"))
+  (println (str "  attach   (require '[us.whitford.llm-repl :refer :all])"))
   (println (str "  commands " (str/join " " (commands)) "  — (println (help)) for details"))
   (println      "  loop     bare text → eval! on the current session | (form) → clojure | :q → quit"))
 
@@ -124,17 +124,20 @@
     (println (or reply (str "error: " error)))))
 
 (defn run-loop
-  "The blocking read-eval-print loop. EOF (ctrl-d) or :q exits."
+  "The blocking read-eval-print loop. EOF (ctrl-d) or :q exits. Branches via
+   `core/parse-submission` (D5, the ONE grammar) — the trim happens here,
+   before classifying, so `:text` (≡ the trimmed line) matches this loop's
+   pre-grammar behavior byte-for-byte."
   []
   (prompt)
   (loop []
     (when-let [line (read-line)]
-      (let [line (str/trim line)]
-        (cond
-          (= line ":q")             :done
-          (str/blank? line)         (do (prompt) (recur))
-          (str/starts-with? line "(") (do (eval-form line) (prompt) (recur))
-          :else                     (do (chat-line line) (prompt) (recur)))))))
+      (let [{:keys [kind text]} (core/parse-submission (str/trim line))]
+        (case kind
+          :quit :done
+          :noop (do (prompt) (recur))
+          :form (do (eval-form text) (prompt) (recur))
+          :chat (do (chat-line text) (prompt) (recur)))))))
 
 ;; ── TUI wiring (the wire layer: submissions ⊕ registry watch) ─────────────────
 
@@ -176,25 +179,33 @@
                       :lines (str/split-lines (client/help-text client))}))
 
 (defn- tui-submit!
-  "The submission dispatch — same grammar as the plain loop, but every branch
-   runs on a WORKER thread so the UI stays live (pending marker meanwhile;
-   the plain loop blocks here, the TUI does not). Everything routes through the
-   `client` seam: local ≡ in-process core, remote ≡ nREPL to a container core.
-   Receipts flow through the client's events stream — the SAME stream attached
-   clients write. `(help)` and `(use! …)` are intercepted (help would echo a
-   useless ellipsis; use! is local focus). Captured *out* pops as an overlay;
-   the VALUE stays a footer receipt (unless it's a command receipt itself —
-   :suppress-echo? — so the tree isn't doubled)."
+  "The submission dispatch — same grammar as the plain loop (`core/parse-
+   submission`, D5), but every branch runs on a WORKER thread so the UI stays
+   live (pending marker meanwhile; the plain loop blocks here, the TUI does
+   not). Everything routes through the `client` seam: local ≡ in-process
+   core, remote ≡ nREPL to a container core. Receipts flow through the
+   client's events stream — the SAME stream attached clients write. `(help)`
+   and `(use! …)` are intercepted (help would echo a useless ellipsis; use!
+   is local focus) — LAYERED on top of the grammar's `:form` kind, same
+   convention as the plain loop's `:form`→eval-form (D5's docstring: a
+   surface layers its own intercepts, it does not re-derive the grammar).
+   `:noop`/`:quit` never actually arrive here (edit-step never submits a
+   blank buffer, and the TUI has no typed-`:q`-quits-the-app convention — it
+   quits via ctrl-c/ctrl-d/esc) — both fall to the `:chat` case unchanged
+   from pre-grammar behavior, same as any other bare text. Captured *out*
+   pops as an overlay; the VALUE stays a footer receipt (unless it's a
+   command receipt itself — :suppress-echo? — so the tree isn't doubled)."
   [client h text]
-  (let [state (:state h)]
+  (let [state (:state h)
+        {:keys [kind]} (core/parse-submission text)]
     (cond
-      (= (str/trim text) "(help)")
+      (and (= kind :form) (= (str/trim text) "(help)"))
       (show-help! client h)
 
-      (and (str/starts-with? text "(") (use-form? text))
+      (and (= kind :form) (use-form? text))
       (do-use! client state text)
 
-      (str/starts-with? text "(")
+      (= kind :form)
       (future
         (let [{:keys [value out err suppress-echo?]} (client/form client text)]
           (cond

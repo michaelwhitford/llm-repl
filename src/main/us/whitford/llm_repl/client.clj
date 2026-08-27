@@ -51,12 +51,15 @@
 ;; ── RemoteCore — the nREPL-client impl (the ONLY impl) ──────────────────────────
 
 (defn- open-conn
-  "Connect + clone a session + alias core in it. Returns a conn map carrying
-   :session (the cloned id — stable *ns*, isolated *out*)."
+  "Connect + clone a session + require the registry ns in it (registry-direct:
+   the poll/fetch strings below read `us.whitford.llm-repl.registry`'s atoms
+   fully-qualified, no alias dependence — this require only ensures the ns is
+   LOADED in the remote process; harmless if already loaded). Returns a conn
+   map carrying :session (the cloned id — stable *ns*, isolated *out*)."
   [host port]
   (let [conn (net/connect host port)
         sid  (net/clone-session conn)]
-    (net/eval-msg conn "(require '[us.whitford.llm-repl.core :as c])" sid)
+    (net/eval-msg conn "(require '[us.whitford.llm-repl.registry :as reg])" sid)
     (assoc conn :session sid)))
 
 (defn- fetch
@@ -74,15 +77,16 @@
   (registry [_] reg-cache)
   (events [_] ev-cache)
   (ensure! [_ slug opts]
+    ;; bare (:refer :all on sconn, see `remote`) — no alias needed.
     (locking slock
-      (net/eval-msg sconn (format "(c/open! %s %s)" (pr-str slug) (pr-str opts))
+      (net/eval-msg sconn (format "(open! %s %s)" (pr-str slug) (pr-str opts))
                     (:session sconn))))
   (prose! [_ slug text]
-    ;; Fully-qualified so ns is irrelevant; pr-str makes text a safe literal.
+    ;; pr-str makes text a safe literal; bare (sconn refers the api ns).
     ;; Blocks in the CONTAINER until the turn completes — meanwhile the poll
     ;; thread (separate socket) keeps the UI live, receipts and all.
     (locking slock
-      (net/eval-msg sconn (format "(c/eval! %s %s)" (pr-str slug) (pr-str text))
+      (net/eval-msg sconn (format "(eval! %s %s)" (pr-str slug) (pr-str text))
                     (:session sconn))))
   (form [_ text]
     (locking slock
@@ -95,22 +99,22 @@
           {:err (or (:ex r) (:err r) "error") :out (:out r)}))))
   (help-text [_]
     (locking slock
-      (let [r (net/eval-msg sconn "(us.whitford.llm-repl.core/help)" (:session sconn))]
+      (let [r (net/eval-msg sconn "(us.whitford.llm-repl/help)" (:session sconn))]
         (if (net/ok? r) (edn/read-string (net/value r)) "help unavailable (attach lost)"))))
   (notify! [_ cb]
     ;; Prime the caches so the FIRST frame has data, then poll deltas. The
     ;; container's events* is the universal change signal (every tape mutation
     ;; emits a receipt) — but the registry can change without a new receipt
     ;; (rare), so we watch both. Phase 2 replaces this with a long-poll tail.
-    (when-let [reg (fetch pconn "@c/sessions*")] (reset! reg-cache reg))
-    (when-let [ev  (fetch pconn "@c/events*")]   (reset! ev-cache ev))
+    (when-let [reg (fetch pconn "@us.whitford.llm-repl.registry/sessions*")] (reset! reg-cache reg))
+    (when-let [ev  (fetch pconn "@us.whitford.llm-repl.registry/events*")]  (reset! ev-cache ev))
     (cb)
     (reset! running? true)
     (let [t (Thread.
              (fn []
                (while @running?
-                 (let [reg (fetch pconn "@c/sessions*")
-                       ev  (fetch pconn "@c/events*")
+                 (let [reg (fetch pconn "@us.whitford.llm-repl.registry/sessions*")
+                       ev  (fetch pconn "@us.whitford.llm-repl.registry/events*")
                        changed? (atom false)]
                    (when (and reg (not= reg @reg-cache)) (reset! reg-cache reg) (reset! changed? true))
                    (when (and ev  (not= ev  @ev-cache))  (reset! ev-cache ev)   (reset! changed? true))
@@ -132,11 +136,14 @@
   [host port]
   (let [pconn (open-conn host port)
         sconn (open-conn host port)]
-    ;; the submit session refers core so bare (open!)/(fork!) forms resolve
-    (net/eval-msg sconn "(require '[us.whitford.llm-repl.core :refer :all])" (:session sconn))
+    ;; the submit session refers the api ns so bare (open!)/(fork!) forms
+    ;; resolve — both a typed (form) AND ensure!/prose!'s own format strings
+    ;; above (registry-direct: no `c` alias, this is the only api access
+    ;; sconn needs)
+    (net/eval-msg sconn "(require '[us.whitford.llm-repl :refer :all])" (:session sconn))
     ;; prime the view caches so the FIRST frame (and initial-slug pick) have
     ;; data before notify! spins up the poll thread
     (->RemoteCore host port pconn sconn (Object.)
-                  (atom (or (fetch pconn "@c/sessions*") {}))
-                  (atom (or (fetch pconn "@c/events*") []))
+                  (atom (or (fetch pconn "@us.whitford.llm-repl.registry/sessions*") {}))
+                  (atom (or (fetch pconn "@us.whitford.llm-repl.registry/events*") []))
                   (atom false) (atom nil))))

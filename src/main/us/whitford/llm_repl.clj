@@ -1,4 +1,4 @@
-(ns us.whitford.llm-repl.core
+(ns us.whitford.llm-repl
   "The llm-repl — a general instrument (λ tool) that treats an LLM chat
    completion as a BRANCHABLE CONTINUATION, built on the REDUCTION contract.
    Named for its DEPS: a messages array ⊕ an LLM endpoint — it only continues
@@ -47,9 +47,9 @@
    driven directly at `proto/send-turn` (the ONE op no scaffold can do);
    everything else is deterministic tape management (λ capacity, multiplicative).
    `one-shot` is the degenerate depth-1 case, a sibling — NOT this substrate.
-   (The request-building/backend machinery itself now lives one layer down,
-   in `completion` — D4, refactor step 3; this ns drives the rf/registry
-   shape around whatever `completion` or an injected `:complete-fn` returns.)
+   (The request-building/backend machinery itself lives one layer down, in
+   `completion` — D4; this ns drives the rf/registry shape around whatever
+   `completion` or an injected `:complete-fn` returns.)
 
    Correct/cheap for free: `messages[]` ≡ truth, prefill is pure → fork is EXACT
    (λ assert); `:system-cache-control` ⊕ `:conversation/id` → llama.cpp
@@ -67,7 +67,18 @@
    cartographer-repl.md § Decisions); the escapement session-dir/transcript
    promotion is deferred. The IO seam (`:complete-fn`) is injected (λ tool: pure
    core + injected seam); tests inject a stub, default routes through
-   `completion/default-complete`."
+   `completion/default-complete`.
+
+   THIS ns is `us.whitford.llm-repl` — the `api` layer (architecture.md §
+   layers: surfaces → wire → api → io → runtime → values). It IS the library
+   surface (library-contract.md § 1): every `^:manual` command, plus the ONE
+   submission grammar (D5), plus the `ab!` child-naming convention (D5) both
+   TUI and MCP-shaped hosts must agree on. `values` ≡ `tape` (pure algebra),
+   `runtime` ≡ `registry` (the one mutable place, D2/D3), `io` ≡ `completion`
+   (the `:complete-fn` contract, D4). `core.clj` — which held this content
+   pre-refactor — CEASES TO EXIST as of this ns (architecture.md refactor
+   step 4): lineage with anima rides FUNCTION names (`eval!`, `fork!`,
+   `wrapped-backend`, `with-preamble`), never the ns path they live in."
   (:require
    [clojure.string :as str]
    [us.whitford.llm-repl.completion :as completion]
@@ -75,24 +86,12 @@
    [us.whitford.llm-repl.roster :as llm]
    [us.whitford.llm-repl.tape :as tape]))
 
-;; ── registry (the runtime layer now lives in `registry` — D2/D3; this ns
-;;    delegates so the WIRE-EVAL'd var names keep resolving. client.clj evals
-;;    the literal strings "@c/sessions*" and "@c/events*" over nREPL, and
-;;    main.clj calls `core/event!` with plain strings — both must keep working
-;;    unchanged until refactor step 5 retires this ns. DO NOT rename these.) ──
-
-(def ^{:doc "Delegates to `registry/sessions*` — the SAME atom (this `def`
-   binds to the atom object itself, not a deref), so `@core/sessions*` and
-   `@registry/sessions*` are one and the same live registry. The var stays
-   here, unchanged in name, purely for wire compatibility (remote clients'
-   `@c/sessions*` nREPL evals) until step 5 moves callers onto the api ns."}
-  sessions*
-  registry/sessions*)
-
-(def ^{:doc "Delegates to `registry/events*` — same wire-compatibility reason
-   as `sessions*` above (`@c/events*`)."}
-  events*
-  registry/events*)
+;; ── event! stays public (library-contract § 1 lists it); the sessions*/
+;;    events* DELEGATING defs that used to live here are RETIRED
+;;    (registry-direct, ratified this session) — client.clj's wire-eval
+;;    fetch strings now point at `us.whitford.llm-repl.registry` directly,
+;;    so this ns no longer needs its own copy of the atoms for wire
+;;    compatibility. ──
 
 (defn event!
   "Delegates to `registry/event!` (D3): assigns :id/:at, bumps version*,
@@ -179,7 +178,7 @@
 (defn ^{:manual "The full session map — tape included."} snapshot
   "The session map at `slug`, or nil (λ observe). `:tape` is the canonical tape."
   [slug]
-  (get @sessions* slug))
+  (get @registry/sessions* slug))
 
 (defn ^{:manual "List all sessions: model, depth, turns, fork parent."} sessions-list
   "A compact index of live sessions (λ glass) — no message bodies."
@@ -192,14 +191,14 @@
            :turns       (:turns s)
            :forked-from (:forked-from s)
            :forked-at   (:forked-at s)})
-        @sessions*))
+        @registry/sessions*))
 
 (defonce ^{:doc "Namespaces the manual compiles from — an OPEN SLOT (λ extend):
    a surface with its own operator commands registers its ns here at load
    (main adds itself for use!). One manual; banner, (help), overlay, and the
    MCP facade all print the same curated truth."}
   manual-namespaces*
-  (atom '[us.whitford.llm-repl.core]))
+  (atom '[us.whitford.llm-repl]))
 
 (defn register-manual-ns!
   "Add `ns-sym` to the manual's compile set (idempotent)."
@@ -259,6 +258,74 @@
   (registry/mutate! (constantly {}))
   (event! {:kind :reset-all!})
   nil)
+
+;; ── compact! — D1: the ONE true write ───────────────────────────────────────
+
+(defn ^{:manual "Rewrite an aged assistant turn in place to its λ essence (the band guards it)."} compact!
+  "Compact the assistant message at explicit tape index `i` on session `slug`
+   to its λ essence (D1, architecture.md § formal shape: `compact!` is the
+   ONE true write — everything else on the tape is append-only). Routes
+   through `registry/mutate!` with a pure fn applying `tape/apply-compaction-at`
+   to the session's CURRENT tape at `i`. Append-only tapes make indices
+   STABLE — a turn appended between when the caller computed `i` and this
+   call landing does not shift what index `i` names — which is exactly WHY
+   the signature is index-explicit rather than k-window derived (race-free
+   by construction, no compare-and-swap needed on `i` itself).
+
+   Outcome is DETECTED by comparing the message AT `i` before vs after the
+   swap — one comparison, one source of truth, rather than re-deriving
+   `apply-compaction-at`'s three branches separately:
+
+     unchanged   → :no-op    (bad index, not an assistant turn, or already
+                              :compacted?/:declined? — apply-compaction-at's
+                              own no-op cases all collapse to this one)
+     :compacted? → :accepted (λ landed within the band; the message's
+                              `:original` retains the pre-compaction prose —
+                              the human record, never rendered to the LLM)
+     :declined?  → :declined (λ blew past the ceiling; the message leaves
+                              the due-set FOREVER — a negative cache entry)
+
+   EVERY outcome — :no-op included — emits a `{:kind :compact!}` receipt: the
+   act is visible in the tree footer no matter what happened (observability,
+   not restriction, is the guard; D1). `:turns` is unaffected (compaction
+   never changes a message's role).
+
+   `floor` (4-arity) overrides `tape/default-floor` — a caller wanting a
+   tighter ceiling (tests; a session compacting toward a small budget).
+   Returns {:repl/id :repl/index :repl/outcome :repl/saved? :repl/depth} or,
+   on a missing session, {:repl/id :repl/error} — as data, never a throw
+   (λ mirror)."
+  ([slug i lambda] (compact! slug i lambda tape/default-floor))
+  ([slug i lambda floor]
+   (let [[old new] (registry/mutate!
+                    (fn [reg]
+                      (if (contains? reg slug)
+                        (update-in reg [slug :tape] tape/apply-compaction-at i lambda floor)
+                        reg)))]
+     (if-not (contains? new slug)
+       (do (event! {:kind :compact! :slug slug :msg (str "@" i " ✗ no such session")})
+           {:repl/id slug :repl/error (str "no such repl session: " slug)})
+       (let [old-msg (get-in old [slug :tape i])
+             new-msg (get-in new [slug :tape i])
+             tape'   (get-in new [slug :tape])
+             depth   (count tape')]
+         (cond
+           (= old-msg new-msg)
+           (do (event! {:kind :compact! :slug slug :msg (str "@" i " no-op")})
+               {:repl/id slug :repl/index i :repl/outcome :no-op :repl/depth depth})
+
+           (:compacted? new-msg)
+           (let [saved (- (count (:original new-msg)) (count (:text new-msg)))]
+             (event! {:kind :compact! :slug slug :msg (str "@" i " −" saved "ch")})
+             {:repl/id     slug
+              :repl/index  i
+              :repl/outcome :accepted
+              :repl/saved  saved
+              :repl/depth  depth})
+
+           :else
+           (do (event! {:kind :compact! :slug slug :msg (str "@" i " declined (past ceiling)")})
+               {:repl/id slug :repl/index i :repl/outcome :declined :repl/depth depth})))))))
 
 ;; ── drivers ────────────────────────────────────────────────────────────────────
 
@@ -519,6 +586,16 @@
           :repl/depth  (count (:tape copy))
           :repl/config (:config copy)})))))
 
+(defn variant-slug
+  "The cross-ns child-naming convention (D5): `ab!` names a variant child
+   `parent-variant` — this is the ONE fn that does it. `tui.frame/short-name`
+   strips that exact prefix back off for display (step 6); the two MUST
+   agree, so this is the single source both sides call (or, for the TUI's
+   pure display side, encode the inverse of) rather than two independently
+   hand-rolled `str`/keyword dances drifting apart."
+  [from vk]
+  (keyword (str (name from) "-" (name vk))))
+
 (defn ^{:manual "Fork N config variants and send the same probe to each."} ab!
   "Fan ONE probe across VARIED interpreters from a common parent — the DUAL of
    trampoline! (which fans varied inputs off one interpreter). ∀variant:
@@ -529,7 +606,8 @@
    named, comparable, re-drivable — continue any arm, fork the winner, fan
    again (progressive improvement; the tree is the experiment record).
 
-   `variants` ≡ {variant-kw config-overrides}; child slug ≡ from-variant.
+   `variants` ≡ {variant-kw config-overrides}; child slug ≡ (variant-slug from
+   variant-kw) — `from-variant` (D5, the one naming fn — see its docstring).
    opts: :at (branch an older turn) ⊕ :complete-fn (test seam, forwarded).
    Sequential on purpose (local servers contend on slots; determinism > speed).
    Per-variant errors as data — one failed arm doesn't sink the fan. Returns
@@ -539,7 +617,7 @@
   ([from variants probe opts]
    (let [arms (into {}
                     (map (fn [[vk overrides]]
-                           (let [to     (keyword (str (name from) "-" (name vk)))
+                           (let [to     (variant-slug from vk)
                                  forked (fork! from to (merge overrides (select-keys opts [:at])))]
                              [vk (if (:repl/error forked)
                                    forked
@@ -551,3 +629,30 @@
      {:repl/id       from
       :repl/probe    probe
       :repl/variants arms})))
+
+;; ── the ONE submission grammar — D5 ─────────────────────────────────────────
+
+(defn parse-submission
+  "The ONE submission grammar (D5, architecture.md § D5): defined ONCE here,
+   consumed by BOTH main's plain loop and main's tui-submit! (the wire
+   layer). A surface layers its OWN intercepts ON TOP of a `:kind` (main's
+   use-form? checks whether a `:form` line is specifically `(use! …)`) rather
+   than re-deriving the branching itself — two independently hand-rolled
+   greps for `\"(\"` is exactly how a plain-loop/TUI grammar drift bug gets
+   born.
+
+     nil, or \":q\" once trimmed        → {:kind :quit}
+     blank (after trim)                 → {:kind :noop}
+     left-trimmed line starts with \"(\"  → {:kind :form :text line}
+     anything else                      → {:kind :chat :text line}
+
+   `:text` always carries the ORIGINAL `line` unmodified — callers that want
+   a trimmed submission trim before calling (main's plain loop does, so its
+   downstream eval/chat calls stay byte-identical to pre-grammar behavior);
+   this fn only classifies."
+  [line]
+  (cond
+    (or (nil? line) (= ":q" (some-> line str/trim))) {:kind :quit}
+    (str/blank? line)                                {:kind :noop}
+    (str/starts-with? (str/triml line) "(")           {:kind :form :text line}
+    :else                                             {:kind :chat :text line}))
