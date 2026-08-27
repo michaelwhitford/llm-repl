@@ -29,5 +29,13 @@ model-facing wire (ops-not-eval ≡ a real sandbox boundary — that insight
 transfers to MCP). nREPL stays the human/editor eval wire; every surface
 speaks its own idiom.
 
+**Upstream trail (do not re-derive):** user-level middleware was TRIED and
+WITHDRAWN by borkdude himself — PR #61 "User level middleware (pt. 1)"
+(merged 2023-04-20), reverted ~2023-08 (`e7e2c98`), issue #62 ":middleware
+pt 2" closed with the design doubts unresolved (handler→xform loses vars;
+ctx must not reach users — msg-only). Handler-style sketch:
+clojurians-log.clojureverse.org/babashka/2023-02-18. A future PR must
+answer #62's objections, not just implement the sketch.
+
 Revisit only if: bb exposes the middleware ns upstream, or a second
 full-eval-free wire is needed before the MCP facade exists.
