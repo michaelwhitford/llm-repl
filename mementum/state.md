@@ -37,20 +37,23 @@ schema (humanized errors), the config prompt stack (`:system-prompt` ∧
 trace-durability (escapement capture). Queue: ⚪ formal-config-malli ∧
 ⚪ trace-durability.
 
-**Refactor steps 1–2 DONE** — step 1 @ `2aa7513`: `tape` ns (values layer)
-absorbed chat-memory ⊕ `truncate-at`; D6 twin runner (`bb test` ≡
-`clojure -M:run-tests`). Step 2 @ `4e89759`: `registry` ns (runtime layer) —
-mutate! chokepoint (swap-vals!, EDN assert, version*), events-as-data,
-wait-for-event!; core on swap!-discipline (D2 race dissolved, deterministic
-race locks — memories/swap-vals-race-detection); core keeps sessions*/
-events*/event! as DELEGATIONS for wire compat (@c/sessions* evals) until
-step 5. Suite: 54 tests / 153 assertions, both runtimes green.
+**Refactor steps 1–3 DONE** — (1) `2aa7513` `tape` (values) ⊕ D6 twin
+runner; (2) `4e89759` `registry` (runtime) — mutate! chokepoint, events-as-
+data, wait-for-event!, D2 race dissolved (memories/swap-vals-race-detection);
+core keeps sessions*/events*/event! DELEGATIONS for wire compat until step 5;
+(3) `aff3a1b` `completion` (io) — the :complete-fn contract named, D4
+amendments landed: {slug} orientation template, structural+visible budget
+(:tools stripped at boundary, true remaining counts), loud empty-finals
+(empty-completion-marker ⊕ :error receipt). Suite: 81 tests / 200
+assertions, both runtimes. NOTE: tools-system's orientation text names
+`llm-repl.core` — update in lockstep at step 4 (memories/
+bb-jvm-private-var-twin-trap also from this step).
 
-**Next pickup: refactor step 3 — `completion` extraction ⊕ driver tests.**
-build-request/plain-complete/tool-complete/default-complete + *tool-depth* +
-tools-system move whole from core → `completion` ns; the :complete-fn
-contract becomes a named layer (D4). Full order in architecture § refactor
-order.
+**Next pickup: refactor step 4 — api ns `us.whitford.llm-repl`.** Commands ⊕
+ONE submission grammar ⊕ `compact!` (routes tape/apply-compaction-at, band ⊕
+⚡ receipt ⊕ :original retained); eval-rf moves; core.clj DELETED (main/tui/
+client rewires ride steps 5–6; check wire-compat delegations land in api or
+die). Full order in architecture § refactor order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -71,4 +74,4 @@ order.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-In progress: ▶ v030-refactor — steps 1–2 ✅ (2aa7513, 4e89759); next ≡ step 3 (`completion` ⊕ driver tests).
+In progress: ▶ v030-refactor — steps 1–3 ✅ (2aa7513, 4e89759, aff3a1b); next ≡ step 4 (api ns ⊕ compact!; core.clj deleted).
