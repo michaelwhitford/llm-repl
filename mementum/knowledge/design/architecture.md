@@ -305,6 +305,15 @@ Amendments from the 2026-08-27 container session:
   live: the `:self-mod` experiment tape died with a container restart, and the
   llama.cpp verbose log (the only remaining trace, which reconstructed the
   whole experiment including thinking blocks) gets purged regularly.
+  **Second justification — provenance (the `:implant` experiment):** every
+  legitimate assistant turn has a captured generation behind it; a forged
+  turn (raw `swap!` tape edit — demonstrated invisible from inside, the model
+  absorbs it as its own) exists on the tape with NO generation in the trace.
+  `tape ∖ trace ≡ undeclared edits`; compact! declares its edits (receipt ⊕
+  `:original`); silence in the trace is the tell. The capture layer is an
+  AUDIT surface, not just recall — raw mutation stays possible (observability
+  ¬restriction), but with durable traces observability extends to
+  forgery-after-the-fact.
 - **Compare pane** — rides the TUI overlay slot.
 
 ## Invariants carried forward unchanged
