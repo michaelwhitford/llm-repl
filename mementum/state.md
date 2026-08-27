@@ -19,6 +19,69 @@ Gen-1 was a Python repl attached TO a model; gen-2 inverts: clients attach to IT
 
 ## Now
 
+**FRONTIER — TUI ≡ PURE nREPL CLIENT; per-project DAEMON model (this tranche,
+verified programmatically; live TUI-over-container human-verified, TUI-over-
+local-daemon still needs a terminal pass).** The last inequality is gone: the
+TUI was the ONE surface that ran IN-PROCESS with core; now it ALWAYS attaches
+over nREPL — local daemon or container, same wire. Equal-clients thesis
+STRUCTURAL, not aspirational: humans, models, editors, AND the TUI all drive the
+same core over the same wire. `LocalCore` DELETED — there is no in-process
+TUI+core path left.
+
+- ✅ `net.clj` — a ~30-line nREPL CLIENT over `bencode.core` (BUNDLED in bb AND
+  a transitive dep of nrepl.server on the JVM — so, unlike start-nrepl!, NO
+  bb?/JVM branch: one impl, both runtimes, ZERO new deps). connect/clone-session
+  /eval-msg (gathers frames till status "done" → {:value :out :err :status :ex})
+  /close. The user's instinct killed a dep question — bb ships the codec, not a
+  client; the client is trivial on top.
+- ✅ `client.clj` — the core-client SEAM the TUI drives (never core directly).
+  ONE impl now: `RemoteCore` (protocol kept as an OPEN SLOT). Submissions →
+  nREPL eval messages (the clojure half runs WHERE THE CORE LIVES, next to the
+  work dir ∧ model; prose turns fire there too); the view is a CACHE ATOM a
+  ~150ms poll thread keeps fresh (phase-1). KEY SHAPE: `registry`/`events` are
+  DEREF-ABLES — local passed core atoms, remote passes cache atoms — so the TUI
+  frame is BYTE-FOR-BYTE UNCHANGED (tui/start! can't tell it's remote). `(use!
+  …)` intercepted in the wire layer (focus ≡ LOCAL-surface concern, never sent
+  across); `(help)` intercepted; form :suppress-echo? when the value carries
+  :repl/id (no doubled receipt). GREEN LIGHT that made it clean: `@sessions*` is
+  pure EDN (`:complete-fn` injected per-call, NEVER stored) → round-trips over
+  the wire; remote form eval is a WIN (nREPL captures *out* the local path
+  hand-rolled).
+- ✅ `daemon.clj` — per-project local daemon lifecycle. The core is a PERSISTENT
+  separate process; the TUI attaches/detaches. Per-project keyed by CWD (like a
+  normal clj repl), discovered by the `.nrepl-port` it already drops there;
+  pid co-located in `<proj>/.llm-repl/daemon.edn` {:pid :port :cwd :started-at}
+  (+ `daemon.log`). spawn! reinvokes the SAME bb.edn (`babashka.config`; deps-
+  root ≡ its parent) `nrepl` task via the VERIFIED macOS detach incantation:
+  `sh -c 'nohup bb … nrepl >…/daemon.log 2>&1 & echo $!'` — nohup ignores
+  SIGHUP, grandchild reparents to launchd (PPID 1), sh's stdout ≡ the pid.
+  RETIRED THE RISK LIVE: survives spawner exit AND SIGHUP; SIGTERM stops it.
+  discover cleans stale (pid gone ∨ port dead) → spawn fresh; ensure! → [state
+  fresh?]; stop! SIGTERMs the recorded pid (NEVER a container); status →
+  +:alive? +:uptime. The container's plain `bb nrepl` NEVER writes daemon.edn —
+  container ∧ local state can't collide.
+- ✅ `main.clj` rewire — `bb llm-repl`: `:attach` set → attach the container
+  (CONTRACT: unreachable ⇒ FAIL LOUD ∧ exit, no silent local fallback — a fresh
+  empty session would mask a down container as lost state); else discover-or-
+  spawn THIS project's daemon → attach over loopback. Quit ≡ DETACH (client
+  sockets close, TUI process exits, daemon KEEPS RUNNING — `bb stop` ends it;
+  reattach finds tapes intact). `--headless` ≡ the DAEMON body (also `bb nrepl`
+  ∧ the container): start nREPL, open scratch, park — NEVER consults :attach
+  (so a container never self-attaches). `--plain` ≡ in-process debug loop. Live-
+  proven: spawn→attach→detach→daemon survives→reattach sees persisted session→
+  stop.
+- ✅ `:attach` config + `bb start`/`bb stop`/`bb status` tasks. `:attach` is a
+  string "host:port"/"port", {:host :port}, `true` (≡ ./.nrepl-port), or false/
+  absent (≡ local). GLOBAL vs PER-PROJECT: a project's ./config.edn `{:attach
+  false}` opts OUT of a global container attach (config chain: later wins).
+  Resolution split by layer: `roster/attach-spec` (config→spec) ∘
+  `daemon/attach-target` (spec→[host port], blank→./.nrepl-port). bb tasks touch
+  ONLY the local daemon, NEVER a container (podman owns those; each container
+  subsystem has its own start/stop). `bb status` ALSO shows the `:attach` remote
+  + REACHABLE/UNREACHABLE (reflects what `bb llm-repl` would attach to);
+  reachable? is host-aware; status pulls config LAZILY (requiring-resolve) so
+  daemon stays a low-level ns (bb stop/start ≈ 0.02s).
+
 **Increments 1 ∧ 2 DONE, live-verified.** Inc 1 at `7a79bae`; inc 2 (TUI)
 human-verified in a real terminal: chat, tab-cycle, multi-line paste as ONE
 turn, attached-client evals appearing live (registry watch → ≤33ms), clean
@@ -177,6 +240,25 @@ restore on exit.
   escapement now require a RELEASE, not a sibling edit; bb.edn ∧ deps.edn
   carry the SAME coordinate (keep in sync).
 - guardrails stays pinned 1.2.16 transitively — don't override.
+- REGISTRY STAYS EDN (hard invariant now the TUI is a wire client): `@sessions*`
+  is serialized over nREPL every view refresh, so a session value must never
+  hold a fn/atom/record. `:complete-fn` is injected PER-CALL, never stored —
+  keep it that way; any non-EDN in a session breaks the remote view silently.
+- Daemon detach (macOS, no setsid): `nohup … & echo $!` under /bin/sh — nohup
+  ⇒ ignore SIGHUP, `&` ⇒ background, sh exits ⇒ grandchild reparents to launchd.
+  Verified survives spawner-exit ∧ SIGHUP; SIGTERM stops. The spawner OWNS
+  daemon.edn (captures $!, polls .nrepl-port for the OS-assigned port).
+- Daemon spawn reinvokes `System/getProperty "babashka.config"` (the --config
+  path) with deps-root ≡ its parent dir — that's how it finds bb.edn from a
+  foreign CWD. No babashka.file/deps-root property exists; parent-of-config is
+  the convention.
+- `bb start`/`stop`/`status` ∧ auto-spawn touch ONLY the local per-project
+  daemon (the pid in ./.llm-repl/daemon.edn) — NEVER a container. Container
+  lifecycle ≡ podman's. `--headless` bypasses :attach entirely (a container's
+  `bb nrepl` must never self-attach).
+- NO nucleus/boot-seed in the repo (still true): an `AGENTS.md` with nucleus
+  content is UNTRACKED and must stay so — the licensing boundary is
+  ~/.config/llm-repl/config.edn, outside the repo.
 - Container nREPL: `:port 0` is ACTIVELY WRONG in a container — it advertises
   a port nobody published. Use FIXED :port 7899 (7888 collides with the
   classic editor-nREPL default) + :bind "0.0.0.0", published 1:1 loopback-only
@@ -216,9 +298,24 @@ README § Self-eval. (v0.1.0 was 90a6c36 — pre-release, MIT, Clojars
 escapement.) Feedback-driven from here; self-eval is the likely
 conversation starter.**
 
-1. `:bbin/bin` entry → `llm-repl` on PATH (DEFERRED until feedback says
+**NEXT SESSION starts here: PHASE-2 LONG-POLL.** The remote view is a ~150ms
+POLL thread (client.clj RemoteCore/notify!) — replace with a server-push
+emulation: add `core/wait-for-event!` that PARKS on an `events*` watch and
+returns new receipts since a seen id (long-poll); a dedicated nREPL session
+blocks on it → near-instant repaint, no busy poll. events* is ALREADY the
+universal change signal (every tape mutation emits a receipt). Fall back to the
+poll if an older server lacks the fn. ALSO PENDING: a human terminal pass on
+`bb llm-repl` over a LOCAL daemon (spawn→attach→detach→reattach→bb stop) — every
+programmatic path verified, only the live TUI render over a local daemon is
+unconfirmed (container-attach TUI already human-verified).
+
+1. Phase-2 long-poll tail (above) — the first pickup.
+2. `:bbin/bin` entry → `llm-repl` on PATH (DEFERRED until feedback says
    people actually want to install it).
-2. Tape persistence (registry → disk; tree survives restart).
-3. Split-pane tape view (watch a second session live).
-4. MCP facade over the same command ns-publics (compile from `(manual)`).
-5. Compare pane (rides the overlay slot) ⊕ pathom resolvers (3c).
+3. Tape persistence to DISK — now LOWER priority: the daemon holds the tree
+   across TUI detach/reattach; disk only matters across a DAEMON restart.
+4. `bb status --all` — machine-wide daemon list (a ~/.local/state index keyed
+   by project) if the per-project view isn't enough.
+5. Split-pane tape view (watch a second session live).
+6. MCP facade over the same command ns-publics (compile from `(manual)`).
+7. Compare pane (rides the overlay slot) ⊕ pathom resolvers (3c).
