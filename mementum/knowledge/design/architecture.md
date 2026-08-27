@@ -131,6 +131,21 @@ append, append anyway and emit a `⚡ raced` receipt — the reply answered a
 prefix; visible, never silent. No locks, no agents. `:turns` is DERIVED from
 the tape inside the swap (never read-stale-and-add).
 
+Live-confirmed (2026-08-27), twice over:
+
+- A model self-modifying its OWN session mid-turn (via its eval tool) was
+  silently clobbered by `(store! slug done)` at turn commit — the race,
+  observed from inside by its victim, which then traced the mechanism from
+  source: "the persistence isn't external — it's the turn's own atomicity."
+  Under v0.2.0 semantics a model's own session is structurally
+  un-self-modifiable; D2's swap!-discipline is what makes self-modification
+  (and `compact!` self-compaction) possible at all.
+- **The interrupt ghost:** a client-side nREPL interrupt kills the client's
+  deref, NOT the driver's tool loop — the orphaned loop keeps dispatching
+  server-side (interleaved receipts observed), and a client retry then RACES
+  its own ghost. Any future cancel surface must cancel server-side; recorded
+  as input to the parked dispatch/await (ticket) idea.
+
 ### D3 — registry chokepoints make the invariants structural
 
 - **EDN assert** at the single mutation fn (dev-mode: round-trip `pr-str`/
@@ -153,6 +168,34 @@ guard, tools-system orientation), `default-complete` extract whole from core.
 The contract — `config ⊕ slug → (tape → text)` — IS the anima injection
 point, now a named layer. Command results are identified structurally
 (api results carry `:repl/id`); the client never regex-sniffs printed strings.
+
+Amendments from the 2026-08-27 self-eval experiments (live A/B, qwen3.6-35b):
+
+- **Slug-aware orientation.** Interpolating the session slug into the
+  orientation ("You are session `:x`; `(repl/snapshot :x)` returns this very
+  conversation") collapsed self-location from a multi-turn guided walk to ONE
+  dispatch — the model trusts the given slug and acts immediately. Self-location
+  is a RUNTIME gap, not a prompt gap: `sessions-list` carries no current-marker,
+  so no honest orientation can direct self-discovery without the slug (the
+  drafting model proved this by failing to write one). Conversely, prose naming
+  raw primitives (`swap!`, `alter-var-root`) did NOT change primitive usage —
+  orientation fixes *location*, not *reach*. Ships as the `:orientation` config
+  template (D7), `{slug}` substituted in tool-complete.
+- **Budget becomes structural and visible.** At the budget boundary, STRIP
+  `:tools` from the final request — final text becomes the only reachable act
+  (unreachable > forbidden), replacing teach-and-hope (observed: the model
+  called tools anyway; the reply landed empty and its unstated strategy was
+  lost forever). Append the remaining count to every tool result
+  (`[3 dispatches remain]`) — a model cannot budget inside an invisible budget.
+- **Reasoning-only termination is loud.** A thinking model can return zero
+  content blocks (thinking-only; observed live via a degenerate reasoning
+  loop). An empty-text final must emit a receipt and a tape marker — never a
+  silent `""` reply.
+- **`^:manual` commands carry malli input schemas.** Bad args → humanized
+  errors as data (the model reads and corrects — the teaching-feedback pattern
+  the chat template's escalating warnings already proved effective on this
+  model class). One source, four surfaces: validation, teaching errors, MCP
+  tool defs (escapement's `malli->json-schema`), docs.
 
 ### D5 — one grammar, one deliberate in-process exception
 
@@ -184,12 +227,39 @@ and a JVM `:run-tests` alias — structurally enforcing the bb/JVM twin
 invariant that v0.2.0 held only by comment. JVM `daemon/spawn!` (no
 `babashka.config` property) fails loud with instructions instead of NPEing.
 
-### D7 — config access is dynamic; reload is real
+### D7 — config is formal, dynamic, and fails loud (amended 2026-08-27, live troubleshooting)
 
 `default-config` becomes a function (v0.2.0's `def` captured `default-model` and
 `default-tools` at load, silently defeating `reload-config!`). Reload is an
 operator seam a DAEMON wants: edit config, `(reload-config!)` over the wire,
-no restart, tapes intact.
+no restart, tapes intact. Live-verified: a container's preamble fix landed via
+`(reload-config!)` over nREPL with tapes intact, no restart.
+
+Amendments from the 2026-08-27 container session:
+
+- **EOF-assert in `read-edn-file`.** Live bug: a stray `}` closed the top-level
+  map early; the trailing `:preamble` was valid-EDN-plus-garbage. `edn/read-string`
+  silently reads the FIRST form — the key vanished with no error, and reload
+  couldn't help (disk ≠ runtime for 40 minutes of mystery). "Malformed fails
+  loud" must also mean *trailing forms fail loud, with position*: read all
+  forms; more than one → throw naming the offending content.
+- **malli schema at `load-config`.** The whole config validated on load;
+  failures humanized (`malli.error/humanize`) with key paths —
+  `{:preamble ["should be a string"]}` instead of a mystery roster. The schema
+  doubles as the config contract; CI validates `config.example.edn` against it.
+  malli already rides the classpath via escapement; bb-load-verified in the
+  container.
+- **The prompt stack becomes config** (three layers; today three different
+  mechanisms, only one of them config):
+  `:preamble` (exists — the boot-seed slot, full chain) ⊕ `:system-prompt`
+  (root default for session `:system`, replacing core's baked
+  `"You are a precise assistant."`) ⊕ `:orientation` (replacing the
+  `tools-system` def: a template string, `{slug}` substituted by tool-complete
+  where the slug is in scope). No nucleus default anywhere — prose ships;
+  boot seeds are a machine's config.
+  Open (needs ratification): chain scope for the new keys (lean: full chain
+  for `:system-prompt`, root-only for `:orientation`); closed vs open schema
+  (lean: closed ⊕ an `:ext` escape hatch for embedding hosts).
 
 ## Build ∧ release ∧ CI (modeled on fulcro-rad-datalevin — copy, then adapt)
 
@@ -216,7 +286,17 @@ no restart, tapes intact.
   session fold (`tape/apply-fold`) is the cross-session compression when it
   lands.
 - **MCP facade** — compiles its tool list from `(manual)`: `:summary` for
-  tool descriptions, `:doc` for depth. Sits on the api ns only.
+  tool descriptions, `:doc` for depth. Sits on the api ns only. With D4's
+  manual schemas, input shapes ride `malli->json-schema` for free.
+- **Trace durability** — escapement's capture layer (`capture.cljc`
+  ArtifactStore ⊕ `transcript.clj` single-writer JSONL ⊕ `storage/disk` ⊕
+  `replay`) as the durable per-turn payload store: full request/response/
+  tool-results as EDN blobs, receipts carry `:io/ref` into the tree. Enables
+  self-compaction with total recall — `compact!` rewrites the tape while every
+  step stays retrievable (the model reads its own past traces). Motivated
+  live: the `:self-mod` experiment tape died with a container restart, and the
+  llama.cpp verbose log (the only remaining trace, which reconstructed the
+  whole experiment including thinking blocks) gets purged regularly.
 - **Compare pane** — rides the TUI overlay slot.
 
 ## Invariants carried forward unchanged
