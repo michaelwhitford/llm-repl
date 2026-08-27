@@ -37,9 +37,16 @@ schema (humanized errors), the config prompt stack (`:system-prompt` ∧
 trace-durability (escapement capture). Queue: ⚪ formal-config-malli ∧
 ⚪ trace-durability.
 
-**Next pickup: refactor step 1 — `tape` ns (extract ⊕ absorb chat-memory) ⊕
-its tests.** Pure, zero risk, seeds the test suite. Full order in
-architecture § refactor order.
+**Refactor step 1 DONE @ `2aa7513`** — `tape` ns (values layer) absorbed
+chat-memory whole ⊕ gained `truncate-at`; core rewired; suite seeded
+(tape_test: 24 tests / 84 assertions, band regression locks) with the D6
+twin runner: `bb test` ≡ `clojure -M:run-tests` (shared test-runner ns,
+per-task `:extra-paths` in bb.edn). Both runtimes green, kondo clean.
+
+**Next pickup: refactor step 2 — `registry` ns ⊕ tests.** Chokepoints:
+swap!-only mutations (append > replace, raced→receipt), EDN assert, version
+counter, events-as-data `{:id :at :kind :slug :msg}`, wait-for-event!.
+Full order in architecture § refactor order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -60,4 +67,4 @@ architecture § refactor order.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-Selected next: 🔵 v030-refactor, step 1 (`tape` ns ⊕ tests).
+In progress: ▶ v030-refactor — step 1 ✅ @ 2aa7513; next ≡ step 2 (`registry` ⊕ tests).
