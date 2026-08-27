@@ -29,6 +29,14 @@ file: [container](knowledge/container.md) ·
 [self-eval](knowledge/self-eval.md) ·
 [tui-design-rules](knowledge/tui-design-rules.md).
 
+**Design amended 2026-08-27 (live container troubleshooting):** D2 race +
+interrupt-ghost live-confirmed; D4 grew slug-aware `:orientation`, structural
+budget, loud empty-finals, manual malli schemas; D7 grew EOF-assert, config
+schema (humanized errors), the config prompt stack (`:system-prompt` ∧
+`:orientation`; open questions flagged for ratification); placeholders grew
+trace-durability (escapement capture). Queue: ⚪ formal-config-malli ∧
+⚪ trace-durability.
+
 **Next pickup: refactor step 1 — `tape` ns (extract ⊕ absorb chat-memory) ⊕
 its tests.** Pure, zero risk, seeds the test suite. Full order in
 architecture § refactor order.
