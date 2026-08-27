@@ -29,7 +29,8 @@
   (:require
    [clojure.string :as str]
    [escapement.tui.compositor :as cmp]
-   [escapement.tui.theme :as theme])
+   [escapement.tui.theme :as theme]
+   [us.whitford.llm-repl.registry :as registry])
   (:import
    (org.jline.terminal Terminal TerminalBuilder)
    (org.jline.utils NonBlockingReader)))
@@ -244,8 +245,11 @@
     (when two?
       (let [tree-iw (- tree-w 2)
             ;; footer: the last few events, VERY short (dim, truncated) —
-            ;; an index of what happened, never the payload
-            evs     (mapv #(theme/sgr-wrap theme/debug-color (cmp/truncate-display % tree-iw))
+            ;; an index of what happened, never the payload. Events are DATA
+            ;; maps now (registry ns, D3); `event-line` renders the one true
+            ;; line (tolerant of a stale/cached plain string too).
+            evs     (mapv #(theme/sgr-wrap theme/debug-color
+                                           (cmp/truncate-display (registry/event-line %) tree-iw))
                           (take-last 5 events))
             ev-h    (if (seq evs) (inc (count evs)) 0)
             tree-h  (max 1 (- inner-h ev-h))

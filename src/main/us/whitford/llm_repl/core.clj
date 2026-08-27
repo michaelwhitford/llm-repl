@@ -69,36 +69,38 @@
    [com.fulcrologic.statecharts.promise :as p]
    [escapement.llm.protocol :as proto]
    [escapement.tools.protocol :as tp]
+   [us.whitford.llm-repl.registry :as registry]
    [us.whitford.llm-repl.roster :as llm]
    [us.whitford.llm-repl.tape :as tape]
    [us.whitford.llm-repl.tools :as tools]))
 
-;; ── registry (Option A: named accumulators carry their interpreter config) ────
+;; ── registry (the runtime layer now lives in `registry` — D2/D3; this ns
+;;    delegates so the WIRE-EVAL'd var names keep resolving. client.clj evals
+;;    the literal strings "@c/sessions*" and "@c/events*" over nREPL, and
+;;    main.clj calls `core/event!` with plain strings — both must keep working
+;;    unchanged until refactor step 5 retires this ns. DO NOT rename these.) ──
 
-(defonce ^{:doc "The continuation registry: {slug → session}. A session ≡
-   {:slug :tape [canonical] :config {…} :turns :created-at :forked-from}.
-   defonce so a reload keeps live tapes."}
+(def ^{:doc "Delegates to `registry/sessions*` — the SAME atom (this `def`
+   binds to the atom object itself, not a deref), so `@core/sessions*` and
+   `@registry/sessions*` are one and the same live registry. The var stays
+   here, unchanged in name, purely for wire compatibility (remote clients'
+   `@c/sessions*` nREPL evals) until step 5 moves callers onto the api ns."}
   sessions*
-  (atom {}))
+  registry/sessions*)
 
-(defonce ^{:doc "The RECEIPT stream — global UI chrome BESIDE the tape registry
-   (bounded vector of one-line receipts, e.g. \"eval! :lambda ✓@6\"). Emitted
-   at every command seam so EVERY client's activity — attached nREPL agents
-   included — is observable by any surface (equal clients at BOTH layers, tape
-   ∧ chrome). Tapeless drivers (bounce!/trampoline!) leave their trace HERE:
-   the receipt is the trace, the payload stays ephemeral. Receipts index what
-   happened; payloads live at the nodes (ratified design rule). defonce so a
-   reload keeps the trail."}
+(def ^{:doc "Delegates to `registry/events*` — same wire-compatibility reason
+   as `sessions*` above (`@c/events*`)."}
   events*
-  (atom []))
+  registry/events*)
 
 (defn event!
-  "Append one receipt line to `events*` (bounded: last 100). Returns `line`.
-   Public — surfaces may contribute receipts (the TUI's form echoes ride
-   this); keep them receipt-length, the tree-pane footer is ~24 cols."
-  [line]
-  (swap! events* #(vec (take-last 100 (conj % line))))
-  line)
+  "Delegates to `registry/event!` (D3): assigns :id/:at, bumps version*,
+   bounds the ring at 200. Keeps accepting plain STRINGS — main.clj's
+   `(core/event! \"use! :x\")` and every event! call in this ns below —
+   `registry/event!` coerces a string to `{:kind :note :msg s}`. Returns the
+   completed event map (callers that want the rendered line: `event-line`)."
+  [e]
+  (registry/event! e))
 
 (def default-system
   "The minimal, constant system prompt — held constant across a preamble-on/off
@@ -321,7 +323,7 @@
    corrects — λ mirror)."
   [slug name->kw {:keys [name input]}]
   (if-let [kw (get name->kw name)]
-    (do (event! (str "⚡ " slug " " (receipt-preview input)))
+    (do (event! {:kind :tool :slug slug :msg (str "⚡ " (receipt-preview input))})
         (tp/dispatch tools/tool-registry* kw input))
     {:result (str "no such tool: " name) :is-error true}))
 
@@ -364,7 +366,7 @@
               (>= bounce tool-bounce-budget)
               (let [refusals (mapv #(tool-result-block % {:result tool-budget-refusal :is-error true})
                                    uses)
-                    _        (event! (str "⚡ " slug " budget! " bounce "↯"))
+                    _        (event! {:kind :tool :slug slug :msg (str "⚡ budget! " bounce "↯")})
                     final    (send! (conj messages
                                           {:role :assistant :content (:content response)}
                                           {:role :user :content refusals}))]
@@ -394,31 +396,37 @@
       (let [tooled (tool-complete config slug)]
         (fn [tape]
           (if (pos? *tool-depth*)
-            (do (event! (str "⚡ " slug " depth-guard→plain"))
+            (do (event! {:kind :tool :slug slug :msg "⚡ depth-guard→plain"})
                 (plain tape))
             (tooled tape))))
       plain)))
 
 ;; ── lifecycle + observability ─────────────────────────────────────────────────
 
-(defn- store! [slug sess] (swap! sessions* assoc slug sess) sess)
-
 (defn ^{:manual "Get or create a session. Options set its model, system, temperature."} open!
-  "Get-or-create the session at `slug`, merging any config overrides from `opts`
-   (config-keys) into its :config. Returns the session map (also stored)."
+  "Get-or-create the session at `slug`, merging any config overrides from
+   `opts` (config-keys) into its :config. Returns the session map.
+
+   D2: the get-or-create decision is made INSIDE the `registry/mutate!` fn —
+   no read-then-decide-then-store gap for a concurrent `open!`/`eval!` on the
+   same slug to land in unnoticed. Creation is detected from the [old new]
+   pair (`old` lacked the slug ⟺ this call created it), never from a stale
+   local `existing` check."
   ([slug] (open! slug {}))
   ([slug opts]
    (let [overrides (select-keys opts config-keys)
-         existing  (get @sessions* slug)
-         sess      (if existing
-                     (update existing :config merge overrides)
-                     {:slug       slug
-                      :tape       []
-                      :config     (merge default-config overrides)
-                      :turns      0
-                      :created-at (System/currentTimeMillis)})]
-     (when-not existing (event! (str "open! " slug)))
-     (store! slug sess))))
+         f         (fn [reg]
+                     (if (contains? reg slug)
+                       (update-in reg [slug :config] merge overrides)
+                       (assoc reg slug {:slug       slug
+                                        :tape       []
+                                        :config     (merge default-config overrides)
+                                        :turns      0
+                                        :created-at (System/currentTimeMillis)})))
+         [old new] (registry/mutate! f)]
+     (when-not (contains? old slug)
+       (event! {:kind :open! :slug slug}))
+     (get new slug))))
 
 (defn ^{:manual "The full session map — tape included."} snapshot
   "The session map at `slug`, or nil (λ observe). `:tape` is the canonical tape."
@@ -489,18 +497,20 @@
        (str/join "\n")))
 
 (defn ^{:manual "Delete a session."} drop!
-  "Discard the session at `slug`. Returns true when one existed."
+  "Discard the session at `slug` (mutate!-only, D2). Returns true when one
+   existed (detected from `old`, the pre-mutation snapshot)."
   [slug]
-  (let [existed? (contains? @sessions* slug)]
-    (swap! sessions* dissoc slug)
-    (when existed? (event! (str "drop! " slug)))
+  (let [[old _] (registry/mutate! #(dissoc % slug))
+        existed? (contains? old slug)]
+    (when existed? (event! {:kind :drop! :slug slug}))
     existed?))
 
 (defn ^{:manual "Delete ALL sessions."} reset-all!
   "Clear the whole registry (test seam / operator reset)."
   []
-  (reset! sessions* {})
-  (event! "reset-all!"))
+  (registry/mutate! (constantly {}))
+  (event! {:kind :reset-all!})
+  nil)
 
 ;; ── drivers ────────────────────────────────────────────────────────────────────
 
@@ -516,38 +526,78 @@
      :repl/replies replies}))
 
 (defn ^{:manual "Chat: send text to a session; the reply is appended to its tape."} eval!
-  "Run ONE completion on the session's tape (interactive driver — applies the
-   rf's 2-arity STEP). Ensures the session (creating with `opts` overrides),
-   persists the user turn FIRST (retry-safe on failure), completes, appends the
-   assistant reply. Returns
-     {:repl/id :repl/reply :repl/depth :repl/turns}
-   or, on send failure, {:repl/id :repl/error} — as DATA, never a throw
-   (λ mirror: the tape keeps the user turn so a retry continues from it).
+  "Run ONE completion on the session's tape. Ensures the session (creating
+   with `opts` overrides), then the D2 shape (architecture.md § D2):
+
+     swap!(append-user)  →  complete(snapshot)  →  swap!(append-assistant)
+
+   1. `registry/mutate!` appends the user turn — persist-FIRST, retry-safe: a
+      completion throw below leaves this turn on the tape for a retry to
+      continue from. The tape it lands on (`snapshot`) is what the completion
+      answers.
+   2. `complete` runs OUTSIDE any swap (an oracle query — D_formal-shape — must
+      never run inside a pure swap fn).
+   3. `registry/mutate!` appends the assistant reply onto whatever tape is
+      CURRENT at that moment — not `snapshot`. `:turns` is DERIVED inside the
+      swap fn from the resulting tape (never read-stale-and-add). If the
+      current tape at step 3 differs from `snapshot` (`old`'s tape ≠ the tape
+      `complete` actually answered), something else appended between steps 1
+      and 3 — append anyway (interleave, never clobber) and emit a
+      {:kind :raced} receipt: visible, never silent, no locks.
+
+   The session vanishing mid-completion (a concurrent `drop!`) is handled the
+   same way, not thrown: each `mutate!` fn no-ops on a missing slug, and the
+   driver reports {:repl/error …} with a loud event instead of an NPE.
+
+   Returns {:repl/id :repl/reply :repl/depth :repl/turns} or, on send failure
+   or a vanished session, {:repl/id :repl/error} — as DATA, never a throw
+   (λ mirror).
 
    opts: config overrides (config-keys, persisted) ⊕ :complete-fn (injected IO;
    default `default-complete`)."
   ([slug text] (eval! slug text {}))
   ([slug text opts]
-   (let [sess       (open! slug opts)
-         before     (:tape sess)
-         complete   ((get opts :complete-fn default-complete) (:config sess) slug)
-         rf         (eval-rf {:complete complete})]
-     ;; persist the user turn first — a completion throw leaves it for retry
-     (event! (str "eval! " slug " …"))
-     (store! slug (update sess :tape tape/append-user text))
-     (try
-       (let [tape' (rf before text)
-             done  (-> sess (assoc :tape tape') (update :turns inc))]
-         (store! slug done)
-         (event! (str "eval! " slug " ✓@" (count tape')))
-         {:repl/id    slug
-          :repl/reply (:text (last tape'))
-          :repl/depth (count tape')
-          :repl/turns (:turns done)})
-       (catch Throwable t
-         (event! (str "eval! " slug " ✗ " (ex-message t)))
-         {:repl/id    slug
-          :repl/error (str "send failed: " (ex-message t))})))))
+   (let [sess           (open! slug opts)
+         complete       ((get opts :complete-fn default-complete) (:config sess) slug)
+         [_ after-user] (registry/mutate!
+                         (fn [reg]
+                           (if (contains? reg slug)
+                             (update-in reg [slug :tape] tape/append-user text)
+                             reg)))]
+     (if-not (contains? after-user slug)
+       (do (event! {:kind :eval! :slug slug :msg "✗ session gone"})
+           {:repl/id slug :repl/error "session no longer exists"})
+       (let [snapshot (:tape (get after-user slug))]
+         (event! {:kind :eval! :slug slug :msg "…"})
+         (try
+           (let [reply      (complete snapshot)
+                 [old new]  (registry/mutate!
+                             (fn [reg]
+                               (if (contains? reg slug)
+                                 (update reg slug
+                                         (fn [s]
+                                           (let [tape' (tape/append-assistant (:tape s) reply)]
+                                             (assoc s
+                                                    :tape  tape'
+                                                    :turns (count (tape/assistant-indices tape'))))))
+                                 reg)))]
+             (if-not (contains? new slug)
+               (do (event! {:kind :eval! :slug slug :msg "✗ session gone mid-completion"})
+                   {:repl/id slug :repl/error "session dropped mid-completion"})
+               (let [final (get new slug)
+                     tape' (:tape final)]
+                 (when (not= (:tape (get old slug)) snapshot)
+                   (event! {:kind :raced :slug slug
+                            :msg  "reply answered a stale prefix — appended, not clobbered"}))
+                 (event! {:kind :eval! :slug slug :msg (str "✓@" (count tape'))})
+                 {:repl/id    slug
+                  :repl/reply (:text (last tape'))
+                  :repl/depth (count tape')
+                  :repl/turns (:turns final)})))
+           (catch Throwable t
+             (event! {:kind :eval! :slug slug :msg (str "✗ " (ex-message t))})
+             {:repl/id    slug
+              :repl/error (str "send failed: " (ex-message t))})))))))
 
 (defn ^{:manual "Run a fixed probe sequence, appending every turn to the tape."} run-battery!
   "Fold a FIXED probe sequence over the session's tape via `transduce` (the
@@ -561,18 +611,40 @@
    opts: config overrides ⊕ :xform ⊕ :complete-fn."
   ([slug probes] (run-battery! slug probes {}))
   ([slug probes opts]
-   (let [sess     (open! slug opts)
-         before   (:tape sess)
-         complete ((get opts :complete-fn default-complete) (:config sess) slug)
-         rf       (eval-rf {:complete complete})
-         _        (event! (str "battery! " slug " " (count probes) "…"))
-         tape'    (transduce (get opts :xform identity) rf before (vec probes))
-         added    (count (filter #(= :assistant (:role %)) (subvec tape' (count before))))]
-     (store! slug (-> sess (assoc :tape tape') (update :turns + added)))
-     ;; all-or-nothing: a mid-battery throw leaves the start receipt dangling
-     ;; — the missing ✓ IS the signal (loud; λ antifragile)
-     (event! (str "battery! " slug " " added "✓"))
-     (assoc (reply-metadata slug before tape') :repl/turns (+ (:turns sess) added)))))
+   (let [sess      (open! slug opts)
+         before    (:tape sess)
+         complete  ((get opts :complete-fn default-complete) (:config sess) slug)
+         rf        (eval-rf {:complete complete})
+         _         (event! {:kind :battery! :slug slug :msg (str (count probes) "…")})
+         ;; the fold stays local (G2: eager, transduce over the STARTING
+         ;; snapshot) — completions never run inside a swap fn. Only the
+         ;; final store is a mutate!, and it APPENDS the added portion onto
+         ;; whatever tape is CURRENT, not `before` (D2, same shape as eval!).
+         tape'     (transduce (get opts :xform identity) rf before (vec probes))
+         added     (subvec tape' (count before))
+         [old new] (registry/mutate!
+                    (fn [reg]
+                      (if (contains? reg slug)
+                        (update reg slug
+                                (fn [s]
+                                  (let [tape'' (into (:tape s) added)]
+                                    (assoc s
+                                           :tape  tape''
+                                           :turns (count (tape/assistant-indices tape''))))))
+                        reg)))]
+     (if-not (contains? new slug)
+       (do (event! {:kind :battery! :slug slug :msg "✗ session gone"})
+           {:repl/id slug :repl/error "session no longer exists"})
+       (let [final (get new slug)]
+         ;; raced ⟺ the tape had already moved (some other write landed)
+         ;; between the fold's snapshot and this final append — append
+         ;; anyway (interleave, never clobber), never silent
+         (when (not= (:tape (get old slug)) before)
+           (event! {:kind :raced :slug slug :msg "battery! appended onto a moved tape"}))
+         ;; all-or-nothing: a mid-battery throw leaves the start receipt
+         ;; dangling — the missing ✓ IS the signal (loud; λ antifragile)
+         (event! {:kind :battery! :slug slug :msg (str (count (tape/assistant-indices added)) "✓")})
+         (assoc (reply-metadata slug before (:tape final)) :repl/turns (:turns final)))))))
 
 (defn- bounce-output
   "Apply the rf's step to a FIXED prefix and read the assistant text — the
@@ -593,16 +665,16 @@
    (let [sess     (open! slug opts)
          complete ((get opts :complete-fn default-complete) (:config sess) slug)
          step     (eval-rf {:complete complete})]
-     (event! (str "bounce! " slug " …"))
+     (event! {:kind :bounce! :slug slug :msg "…"})
      (try
        (let [out (bounce-output step (:tape sess) text)]
-         (event! (str "bounce! " slug " ✓"))
+         (event! {:kind :bounce! :slug slug :msg "✓"})
          {:repl/id     slug
           :repl/input  text
           :repl/output out
           :repl/depth  (count (:tape sess))})   ; the FIXED depth — unchanged
        (catch Throwable t
-         (event! (str "bounce! " slug " ✗ " (ex-message t)))
+         (event! {:kind :bounce! :slug slug :msg (str "✗ " (ex-message t))})
          {:repl/id slug :repl/error (str "send failed: " (ex-message t))})))))
 
 (defn ^{:manual "Try MANY inputs against the same fixed tape; nothing is saved."} trampoline!
@@ -621,15 +693,15 @@
          prefix   (:tape sess)
          complete ((get opts :complete-fn default-complete) (:config sess) slug)
          step     (eval-rf {:complete complete})
-         _        (event! (str "tramp! " slug " " (count inputs) "…"))
+         _        (event! {:kind :tramp! :slug slug :msg (str (count inputs) "…")})
          bounces  (mapv (fn [input]
                           (try {:input input :output (bounce-output step prefix input)}
                                (catch Throwable t
                                  {:input input :error (str "send failed: " (ex-message t))})))
                         (vec inputs))
          errs     (count (filter :error bounces))]
-     (event! (str "tramp! " slug " " (- (count bounces) errs) "✓"
-                  (when (pos? errs) (str " " errs "✗"))))
+     (event! {:kind :tramp! :slug slug
+              :msg  (str (- (count bounces) errs) "✓" (when (pos? errs) (str " " errs "✗")))})
      {:repl/id      slug
       :repl/depth   (count prefix)
       :repl/bounces bounces})))
@@ -648,31 +720,52 @@
 
    Refuses a missing `from` or an existing `to` (no silent clobber —
    λ escalate). Returns {:repl/id :repl/from :repl/depth :repl/config} or
-   {:repl/error …} as data."
+   {:repl/error …} as data.
+
+   D2: BOTH existence checks move INSIDE the `registry/mutate!` fn — no
+   read-check-then-write gap for a concurrent `fork!`/`drop!` to land in.
+   `f` no-ops (returns `reg` unchanged) on either a missing `from` or an
+   existing `to`; the caller then inspects `old` (the pre-mutation snapshot
+   `mutate!` returns) to tell WHICH no-op happened and report the right
+   error — `old` is exactly the map `f` saw on its one successful
+   application (swap!'s contract), so checking against it post-hoc carries
+   no TOCTOU window of its own."
   ([from to] (fork! from to {}))
   ([from to opts]
-   (let [src (get @sessions* from)]
+   (let [[old new]
+         (registry/mutate!
+          (fn [reg]
+            (let [src (get reg from)]
+              (cond
+                (nil? src)         reg
+                (contains? reg to) reg
+                :else
+                (let [copy (-> src
+                               (assoc :slug to :forked-from from :created-at (System/currentTimeMillis))
+                               (update :config merge (select-keys opts config-keys))
+                               (cond-> (:at opts) (update :tape tape/truncate-at (:at opts))))
+                      ;; the BRANCH POINT — the tree edge is (from @ forked-at
+                      ;; → to); without it an :at fork's edge is lossy (tree
+                      ;; views need it). :turns re-DERIVED from the copied
+                      ;; tape (not copied from the parent's counter): an :at
+                      ;; truncation drops assistant turns, and the tape is
+                      ;; the ground truth the counter must agree with.
+                      copy (assoc copy
+                                  :forked-at (count (:tape copy))
+                                  :turns     (count (tape/assistant-indices (:tape copy))))]
+                  (assoc reg to copy))))))]
      (cond
-       (nil? src)                (do (event! (str "fork! " from "→" to " ✗"))
-                                     {:repl/error (str "no such repl session: " from)})
-       (contains? @sessions* to) (do (event! (str "fork! " from "→" to " ✗"))
-                                     {:repl/error (str "repl session already exists: " to)})
+       (nil? (get old from))
+       (do (event! {:kind :fork! :slug from :msg (str "→" to " ✗ no such session")})
+           {:repl/error (str "no such repl session: " from)})
+
+       (contains? old to)
+       (do (event! {:kind :fork! :slug from :msg (str "→" to " ✗ already exists")})
+           {:repl/error (str "repl session already exists: " to)})
+
        :else
-       (let [copy (-> src
-                      (assoc :slug to :forked-from from :created-at (System/currentTimeMillis))
-                      (update :config merge (select-keys opts config-keys))
-                      (cond-> (:at opts) (update :tape tape/truncate-at (:at opts))))
-             ;; the BRANCH POINT — the tree edge is (from @ forked-at → to);
-             ;; without it an :at fork's edge is lossy (tree views need it).
-             ;; :turns re-DERIVED from the copied tape (not copied from the
-             ;; parent's counter): an :at truncation drops assistant turns,
-             ;; and the tape is the ground truth the counter must agree with.
-             copy (assoc copy
-                         :forked-at (count (:tape copy))
-                         :turns     (count (filter #(= :assistant (:role %))
-                                                   (:tape copy))))]
-         (store! to copy)
-         (event! (str "fork! " from "→" to "@" (:forked-at copy)))
+       (let [copy (get new to)]
+         (event! {:kind :fork! :slug from :msg (str "→" to "@" (:forked-at copy))})
          {:repl/id     to
           :repl/from   from
           :repl/depth  (count (:tape copy))
@@ -705,8 +798,8 @@
                                    (eval! to probe (select-keys opts [:complete-fn])))])))
                     variants)
          errs (count (filter :repl/error (vals arms)))]
-     (event! (str "ab! " from " " (- (count arms) errs) "✓"
-                  (when (pos? errs) (str " " errs "✗"))))
+     (event! {:kind :ab! :slug from
+              :msg  (str (- (count arms) errs) "✓" (when (pos? errs) (str " " errs "✗")))})
      {:repl/id       from
       :repl/probe    probe
       :repl/variants arms})))
