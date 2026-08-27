@@ -1,0 +1,27 @@
+{;; llm-repl CONTAINER config — the deltas a containerized instance needs.
+ ;; Two ways to use it (config chain: built-in < ~/.config/llm-repl/config.edn
+ ;; < ./config.edn < LLM_REPL_CONFIG — later wins):
+ ;;   1. copy into the mounted work dir as ./config.edn — rides the /work
+ ;;      mount, later-wins over a mounted ~/.config (nucleus etc. inherit,
+ ;;      these keys override)
+ ;;   2. or mount a full config at /home/repl/.config/llm-repl/config.edn
+
+ ;; The container contract: FIXED port, all-interfaces bind. Publish 1:1
+ ;; (-p 127.0.0.1:7899:7899) so .nrepl-port stays truthful host-side.
+ ;; Loopback-only publish on the host: nREPL is unauthenticated eval —
+ ;; never expose it to the LAN.
+ :nrepl {:port 7899 :bind "0.0.0.0"}
+
+ ;; llama.cpp runs on the machine HOSTING the container — "localhost" is the
+ ;; container itself. host.containers.internal ≡ podman's name for the host
+ ;; gateway (docker's: host.docker.internal; recent podman resolves both).
+ :providers {:local {:provider/kind :llamacpp}}
+ :models {:qwen36-35b-a3b {:model/provider          :local
+                           :model/host              "host.containers.internal"
+                           :model/port              5100
+                           :model/http-timeout-ms   900000
+                           :model/max-output-tokens 16384}
+          :gemma-4-31b-it {:model/provider :local
+                           :model/host     "host.containers.internal"
+                           :model/port     5102}}
+ :default-model :qwen36-35b-a3b}
