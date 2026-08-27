@@ -53,7 +53,9 @@ compact-live-trial (queue) is now UNBLOCKED.
 **Next pickup: refactor step 5 — `client` version-poll ⊕ long-poll.**
 RemoteCore rides registry/version* (poll tiny number, fetch on change) ⊕
 wait-for-event! long-poll; structural suppress-echo (kill the :repl/id
-regex at client.clj form). Full order in architecture § refactor order.
+regex at client.clj form) ⊕ attach-loss fail-loud (live-found: dead daemon
+renders as live — memories/tui-dead-daemon-silent). Full order in
+architecture § refactor order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
