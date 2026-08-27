@@ -9,4 +9,7 @@
  {;; JVM twin of `bb llm-repl` — args pass through the same way:
   ;;   clojure -M:llm-repl [--plain | --headless]
   :llm-repl {:main-opts ["-m" "us.whitford.llm-repl.main"]}
-  :test     {:extra-paths ["src/test"]}}}
+  ;; D6 twin: `bb test` ≡ `clojure -M:run-tests` — same suite, both runtimes
+  ;; run THIS ns's -main (src/test/us/whitford/llm_repl/test_runner.clj).
+  :run-tests {:extra-paths ["src/test"]
+              :main-opts   ["-m" "us.whitford.llm-repl.test-runner"]}}}

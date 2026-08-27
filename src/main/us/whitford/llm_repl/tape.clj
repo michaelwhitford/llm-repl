@@ -1,7 +1,11 @@
-(ns us.whitford.llm-repl.chat-memory
-  "Pure message-list logic for the λ-compacted conversation — no LLM, no
-  escapement, fully unit-testable. Port of ouroboros.compact.core (proven
-  there; provenance ≡ designs/cold-compaction.md).
+(ns us.whitford.llm-repl.tape
+  "The `values` layer of the v0.3.0 architecture (mementum/knowledge/design/
+  architecture.md): PURE tape algebra — the tape (a conversation's messages[])
+  is an immutable, forkable VALUE, not a mutable buffer. Zero IO deps (only
+  clojure.string); every fn here is a pure fn of a vector plus, at most, a few
+  scalars. Port of ouroboros.compact.core (proven there; provenance ≡
+  designs/cold-compaction.md) — this ns's place in the layer stack is the
+  values layer (core.clj drives it; core.clj is IO, this is not).
 
   THE IDEA: a chat's assistant turns generate many tokens the HUMAN needs
   (explanation, scaffolding) but the CONTINUATION does not. So we keep the
@@ -28,7 +32,11 @@
   index). With parallel regions the hot lane may append while a compaction is
   in flight, shifting what `next-to-compact` would re-derive; the result
   event carries the index it was computed FOR. Appends are end-only → indices
-  are stable → explicit-index apply is race-free."
+  are stable → explicit-index apply is race-free.
+
+  FORK is the other tape-tree primitive this layer owns: `truncate-at` cuts
+  a tape back to its first n messages — the pure half of fork! (core.clj
+  wires the IO/registry half; the tape is a tree, the conversation one path)."
   (:require
    [clojure.string :as str]))
 
@@ -50,6 +58,14 @@
           {:role role :content [{:type :text :text text}]})
         messages))
 
+(defn truncate-at
+  "Fork an older turn: the first `n` messages of `tape` (the depth number
+  surfaces show — 2 per exchange). Pure; the parent tape is untouched (the
+  tape is a tree, a conversation one path). Plain `take` semantics: n≤0 ⇒
+  empty, n≥count ⇒ the whole tape, always returns a vector."
+  [tape n]
+  (vec (take n tape)))
+
 (def default-floor
   "The λ OVERHEAD FLOOR, in characters — the length below which compaction is
   not compression but formalization. Naming a turn's essence in λ costs
@@ -63,12 +79,12 @@
   confirms or moves it — see designs/cold-compaction.md § The band."
   120)
 
-(defn- assistant-indices
+(defn assistant-indices
   "Indices of assistant messages, ascending."
   [messages]
   (vec (keep-indexed (fn [i m] (when (= :assistant (:role m)) i)) messages)))
 
-(defn- due-indices
+(defn due-indices
   "THE due-set, ascending — ONE definition, three consumers (next-to-compact,
   needs-compaction?, backlog-count). It was duplicated across two functions;
   adding `:declined?` to one and not the other is exactly how the strip comes

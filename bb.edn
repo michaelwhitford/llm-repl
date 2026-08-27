@@ -18,4 +18,8 @@
             :task     (daemon/stop-cli)}
   status   {:doc      "Show this project's local llm-repl daemon status"
             :requires ([us.whitford.llm-repl.daemon :as daemon])
-            :task     (daemon/status-cli)}}}
+            :task     (daemon/status-cli)}
+  test     {:doc         "Run the test suite (bb runtime — CI's first leg)"
+            :extra-paths ["src/test"]
+            :requires    ([us.whitford.llm-repl.test-runner :as tr])
+            :task        (apply tr/-main *command-line-args*)}}}

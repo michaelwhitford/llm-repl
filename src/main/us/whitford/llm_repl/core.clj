@@ -10,7 +10,7 @@
    > IS call/cc). The tape is a tree; the \"conversation\" is one path.
 
    ```
-   tape        ≡ accumulator   canonical chat-memory vec (immutable, forkable)
+   tape        ≡ accumulator   canonical messages[] vec (immutable, forkable)
    interpreter ≡ rf-factory     (eval-rf {:complete (fn [tape]→reply)}) — full 3-arity rf
    registry    ≡ {slug → {:tape acc :config interpreter-cfg}}   named accumulators (Option A)
    fork        ≡ copy {tape,config}; override config ⇒ counterfactual (tape=what, rf=how)
@@ -69,8 +69,8 @@
    [com.fulcrologic.statecharts.promise :as p]
    [escapement.llm.protocol :as proto]
    [escapement.tools.protocol :as tp]
-   [us.whitford.llm-repl.chat-memory :as mem]
    [us.whitford.llm-repl.roster :as llm]
+   [us.whitford.llm-repl.tape :as tape]
    [us.whitford.llm-repl.tools :as tools]))
 
 ;; ── registry (Option A: named accumulators carry their interpreter config) ────
@@ -137,7 +137,7 @@
 (defn assistant-text
   "Concatenate the `:text` content blocks of an escapement Response into the
    canonical assistant turn. Thinking/tool blocks are dropped — increment 1
-   feeds back TEXT (matches chat-memory; correct for thinking-off subject
+   feeds back TEXT (matches the tape ns's message shape; correct for thinking-off subject
    probes; carrying thinking+signature is a later fork)."
   [response]
   (->> (:content response)
@@ -167,7 +167,7 @@
                    true  nil
                    thinking)]
     (cond-> {:model                (name model)
-             :messages             (mem/render-messages tape)
+             :messages             (tape/render-messages tape)
              :conversation/id      slug
              :system-cache-control {:type :ephemeral}}
       (some? sys)         (assoc :system sys)
@@ -188,8 +188,8 @@
     ([] [])
     ([tape] tape)
     ([tape probe]
-     (let [t (mem/append-user tape probe)]
-       (mem/append-assistant t (complete t))))))
+     (let [t (tape/append-user tape probe)]
+       (tape/append-assistant t (complete t))))))
 
 ;; ── the IO seam (injected — default ≡ the config-roster backend) ──────────────
 
@@ -534,7 +534,7 @@
          rf         (eval-rf {:complete complete})]
      ;; persist the user turn first — a completion throw leaves it for retry
      (event! (str "eval! " slug " …"))
-     (store! slug (update sess :tape mem/append-user text))
+     (store! slug (update sess :tape tape/append-user text))
      (try
        (let [tape' (rf before text)
              done  (-> sess (assoc :tape tape') (update :turns inc))]
@@ -661,7 +661,7 @@
        (let [copy (-> src
                       (assoc :slug to :forked-from from :created-at (System/currentTimeMillis))
                       (update :config merge (select-keys opts config-keys))
-                      (cond-> (:at opts) (update :tape #(vec (take (:at opts) %)))))
+                      (cond-> (:at opts) (update :tape tape/truncate-at (:at opts))))
              ;; the BRANCH POINT — the tree edge is (from @ forked-at → to);
              ;; without it an :at fork's edge is lossy (tree views need it).
              ;; :turns re-DERIVED from the copied tape (not copied from the
