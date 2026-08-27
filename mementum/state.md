@@ -51,15 +51,5 @@ architecture § refactor order.
 
 ## Queue
 
-1. Refactor steps 1–8 (architecture § refactor order): tape → registry →
-   completion → api ns → client long-poll → tui split → daemon/roster →
-   build.clj ⊕ workflows.
-2. Human terminal pass: TUI over LOCAL daemon
-   (spawn→attach→detach→reattach→bb stop) — programmatic paths verified;
-   live render unconfirmed (container-attach TUI already human-verified).
-3. `compact!` live trial once step 4 lands (self-compaction — the model
-   compacting its own tape).
-4. Tape persistence to disk (daemon-owned; placeholder in design).
-5. MCP facade compiled from `(manual)` (placeholder in design).
-6. `:bbin/bin` entry (deferred until feedback); split-pane tape view;
-   compare pane on the overlay slot; `bb status --all`.
+→ `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
+Selected next: 🔵 v030-refactor, step 1 (`tape` ns ⊕ tests).
