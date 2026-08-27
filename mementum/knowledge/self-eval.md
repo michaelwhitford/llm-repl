@@ -73,6 +73,32 @@ a MACHINE fact surviving restarts; per-session `{:tools nil}` still disarms.
 The counterfactual is one fan away:
 `(ab! :s {:bare {:tools nil} :armed {:tools true}} probe)`.
 
+## Orientation findings (2026-08-27 container experiments)
+
+Six-turn self-modification ladder ⊕ orientation A/B on qwen3.6-35b, driven
+over nREPL. Instrument-relevant results (model-profile detail → anima):
+
+- **Self-location is a runtime gap, not a prompt gap.** Telling the model
+  "this conversation is a tape held by that process" does NOT produce the
+  belief it can touch its own session; being walked to FIND itself does.
+  Interpolate the slug ("You are session `:x`; `(repl/snapshot :x)` returns
+  this conversation") and self-location collapses to one dispatch —
+  A/B-verified. Ships as the `:orientation` config template (design § D7/D4).
+- **Orientation fixes location, not reach.** Naming raw primitives
+  (`swap!`, `alter-var-root`) in prose did not produce their use; "state
+  persists" did not stop re-requiring. Reach needs template-level feedback
+  (the chat template's escalating tool-error warnings demonstrably work) or
+  task scaffolding (offer a strategy menu; open-ended invention spirals).
+- **Two empty-reply modes, now distinguishable:** budget exhaustion
+  (`⚡ budget! 8↯` receipt present) vs reasoning-only termination (thinking
+  emitted, zero content blocks — observed via a degenerate repetition loop;
+  check sampling: `repeat_penalty 1.0` ∧ `dry 0` on the wire). Design fixes:
+  strip `:tools` from the post-budget request; loud marker for empty finals.
+- **The verbose llama.cpp log reconstructs everything** the tape discards —
+  loop-local tool exchanges AND thinking blocks (`D Parsed message` entries,
+  full rendered prompts). It is the payload trace until trace-durability
+  lands; it gets purged, so mine it promptly.
+
 ## Live receipts worth remembering
 
 Σ(p²) over first 20 primes = 30007 computed via tool (the human-side
