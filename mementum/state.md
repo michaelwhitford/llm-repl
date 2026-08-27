@@ -37,16 +37,20 @@ schema (humanized errors), the config prompt stack (`:system-prompt` ∧
 trace-durability (escapement capture). Queue: ⚪ formal-config-malli ∧
 ⚪ trace-durability.
 
-**Refactor step 1 DONE @ `2aa7513`** — `tape` ns (values layer) absorbed
-chat-memory whole ⊕ gained `truncate-at`; core rewired; suite seeded
-(tape_test: 24 tests / 84 assertions, band regression locks) with the D6
-twin runner: `bb test` ≡ `clojure -M:run-tests` (shared test-runner ns,
-per-task `:extra-paths` in bb.edn). Both runtimes green, kondo clean.
+**Refactor steps 1–2 DONE** — step 1 @ `2aa7513`: `tape` ns (values layer)
+absorbed chat-memory ⊕ `truncate-at`; D6 twin runner (`bb test` ≡
+`clojure -M:run-tests`). Step 2 @ `4e89759`: `registry` ns (runtime layer) —
+mutate! chokepoint (swap-vals!, EDN assert, version*), events-as-data,
+wait-for-event!; core on swap!-discipline (D2 race dissolved, deterministic
+race locks — memories/swap-vals-race-detection); core keeps sessions*/
+events*/event! as DELEGATIONS for wire compat (@c/sessions* evals) until
+step 5. Suite: 54 tests / 153 assertions, both runtimes green.
 
-**Next pickup: refactor step 2 — `registry` ns ⊕ tests.** Chokepoints:
-swap!-only mutations (append > replace, raced→receipt), EDN assert, version
-counter, events-as-data `{:id :at :kind :slug :msg}`, wait-for-event!.
-Full order in architecture § refactor order.
+**Next pickup: refactor step 3 — `completion` extraction ⊕ driver tests.**
+build-request/plain-complete/tool-complete/default-complete + *tool-depth* +
+tools-system move whole from core → `completion` ns; the :complete-fn
+contract becomes a named layer (D4). Full order in architecture § refactor
+order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -67,4 +71,4 @@ Full order in architecture § refactor order.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-In progress: ▶ v030-refactor — step 1 ✅ @ 2aa7513; next ≡ step 2 (`registry` ⊕ tests).
+In progress: ▶ v030-refactor — steps 1–2 ✅ (2aa7513, 4e89759); next ≡ step 3 (`completion` ⊕ driver tests).
