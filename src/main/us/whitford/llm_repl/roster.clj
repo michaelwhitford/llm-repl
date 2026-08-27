@@ -40,7 +40,7 @@
    ;; the GENERIC default boot layer — deliberately bland; a machine's own
    ;; boot seed belongs in its config file (chain: see resolve-preamble)
    :preamble      "Be precise and concise. Say when you are unsure. Prefer runnable examples over prose."
-   :nrepl         {:port 0}})
+   :nrepl         {:port 0 :bind "127.0.0.1"}})
 
 (defn- read-edn-file
   "Parse `f` when it exists, else nil. A malformed file fails LOUD (silent
@@ -120,14 +120,16 @@
   "Escapement wiring for a configured model, dispatched on the provider's
    :provider/kind (VERBATIM from anima's llm.clj, minus the trunk/capacity
    attributes — no arbiter here):
-     :llamacpp — local llama.cpp speaking OpenAI-compat /v1 (:model/port), via
+     :llamacpp — llama.cpp speaking OpenAI-compat /v1 (:model/port, and
+                 :model/host when it isn't localhost — a LAN box, or
+                 host.containers.internal from inside a container), via
                  OUR backend: escapement's stock OpenAI translator DROPS
                  :thinking and has no home for id_slot/cache_prompt
      :codex    — ChatGPT-subscription OAuth (Responses API); the backend
                  loads/refreshes ~/.escapement/openai-auth.json at send time
    Returns {:descriptor — build-backend input
             :alias      — model-kw → wire target (model-name resolution)}"
-  [model-kw {:model/keys [provider port slots http-timeout-ms max-output-tokens]}]
+  [model-kw {:model/keys [provider host port slots http-timeout-ms max-output-tokens]}]
   (let [{:provider/keys [kind]} (provider-entry provider)]
     (case kind
       ;; :http-timeout-ms — a local thinking model routinely runs minutes/call;
@@ -135,10 +137,11 @@
       ;; :error.llm.timeout FAULT. Default the local path to 300s (per-model
       ;; :model/http-timeout-ms). :max-output-tokens — n_predict floor-guard;
       ;; llama.cpp is unbounded by default (a think-off echo/loop otherwise
-      ;; fills the whole context).
+      ;; fills the whole context). :model/host — default localhost; a
+      ;; containerized repl names the host gateway, a LAN box its hostname.
       :llamacpp {:descriptor {:kind              :llamacpp
                               :api-key           "local"
-                              :base-url          (str "http://localhost:" port "/v1")
+                              :base-url          (str "http://" (or host "localhost") ":" port "/v1")
                               :default-model     (name model-kw)
                               :http-timeout-ms   (or http-timeout-ms 300000)
                               :max-output-tokens (or max-output-tokens 8192)

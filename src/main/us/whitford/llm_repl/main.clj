@@ -53,18 +53,23 @@
 (defn- bb? [] (some? (System/getProperty "babashka.version")))
 
 (defn start-nrepl!
-  "Start the nREPL server on the config port (0 ≡ ephemeral), write
-   .nrepl-port (editor auto-discovery convention), return the actual port.
-   bb → babashka.nrepl.server; JVM → nrepl.server — resolved at runtime so
-   neither classpath needs the other's dep."
+  "Start the nREPL server on the config port (0 ≡ ephemeral) and bind
+   address (default loopback), write .nrepl-port (editor auto-discovery
+   convention), return the actual port. bb → babashka.nrepl.server;
+   JVM → nrepl.server — resolved at runtime so neither classpath needs the
+   other's dep.
+
+   :nrepl {:bind \"0.0.0.0\"} opens the attach surface beyond loopback —
+   nREPL is unauthenticated eval; do that only behind a wall (a container
+   publishing loopback-only, a firewall). Default stays 127.0.0.1."
   []
-  (let [port (get-in (roster/config) [:nrepl :port] 0)
+  (let [{:keys [port bind] :or {port 0 bind "127.0.0.1"}} (:nrepl (roster/config))
         actual (if (bb?)
                  (let [start! (requiring-resolve 'babashka.nrepl.server/start-server!)
-                       server (start! {:host "127.0.0.1" :port port :quiet true})]
+                       server (start! {:host bind :port port :quiet true})]
                    (.getLocalPort ^java.net.ServerSocket (:socket server)))
                  (let [start! (requiring-resolve 'nrepl.server/start-server)
-                       server (start! :bind "127.0.0.1" :port port)]
+                       server (start! :bind bind :port port)]
                    (:port server)))]
     (spit ".nrepl-port" (str actual))
     actual))
@@ -84,7 +89,8 @@
 (defn- banner [nrepl-port]
   (println "llm-repl — the tape is the value; fork is free.")
   (println (str "  model    " (roster/default-model)))
-  (println (str "  nREPL    127.0.0.1:" nrepl-port "  (.nrepl-port written — attach any client)"))
+  (println (str "  nREPL    " (get-in (roster/config) [:nrepl :bind] "127.0.0.1") ":" nrepl-port
+                "  (.nrepl-port written — attach any client)"))
   (println (str "  attach   (require '[us.whitford.llm-repl.core :refer :all])"))
   (println (str "  commands " (str/join " " (commands)) "  — (println (help)) for details"))
   (println      "  loop     bare text → eval! on the current session | (form) → clojure | :q → quit"))

@@ -16,6 +16,10 @@
  ;; Models — the roster. Open a session on one with (open! :s {:model :name}).
  ;; For :llamacpp providers :model/port is required — the server's port.
  ;; Optional, with defaults:
+ ;;   :model/host               "localhost" — where the server runs. Name a
+ ;;                               LAN box, or the host gateway from inside a
+ ;;                               container (podman: host.containers.internal,
+ ;;                               docker: host.docker.internal)
  ;;   :model/http-timeout-ms    300000  — raise it for slow or thinking models
  ;;   :model/max-output-tokens  8192
  ;;   :model/slots              — pin sessions to llama.cpp KV-cache slots for
@@ -65,4 +69,8 @@
 
  ;; nREPL attach port. 0 picks a free port. Either way the chosen port is
  ;; written to .nrepl-port so editors and clients can auto-connect.
+ ;; :bind (default "127.0.0.1") is the listen address. "0.0.0.0" opens the
+ ;; attach surface beyond loopback — nREPL is unauthenticated eval, so only
+ ;; do that behind a wall (e.g. a container publishing loopback-only; see
+ ;; docker/config.edn, which pairs it with a fixed port).
  :nrepl {:port 0}}
