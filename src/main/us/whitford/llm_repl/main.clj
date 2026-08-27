@@ -243,7 +243,21 @@
                         :on-stop    (fn [] (client/shutdown! client))})]
     (deliver h* h)
     (reset! tui* h)
-    (client/notify! client (fn [] (tui/request-render! (:state h))))
+    ;; The notify callback is ALSO the attach-loss wake-up (client protocol):
+    ;; when the poll loop flips status to :lost we honor the attach contract —
+    ;; teardown, say why on the REAL screen (stop! leaves the alt screen), and
+    ;; exit nonzero. Never render a dead core as a live one
+    ;; (memories/tui-dead-daemon-silent).
+    (client/notify! client
+                    (fn []
+                      (let [{:keys [attach reason]} @(client/status client)]
+                        (if (= :lost attach)
+                          (do (try (tui/stop! h) (catch Throwable _ nil))
+                              (println (str "llm-repl — attach lost: "
+                                            (or reason "core unreachable")
+                                            " (tapes live with the core; reattach when it returns)"))
+                              (System/exit 1))
+                          (tui/request-render! (:state h))))))
     @(promise)))
 
 (defn- run-attached

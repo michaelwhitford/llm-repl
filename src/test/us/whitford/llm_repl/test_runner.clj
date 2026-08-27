@@ -3,6 +3,7 @@
    THIS -main — one suite, two runtimes (design D6)."
   (:require [clojure.test :as t]
             [us.whitford.llm-repl-test]
+            [us.whitford.llm-repl.client-test]
             [us.whitford.llm-repl.completion-test]
             [us.whitford.llm-repl.registry-test]
             [us.whitford.llm-repl.tape-test]))
@@ -11,5 +12,6 @@
   (let [{:keys [fail error]} (t/run-tests 'us.whitford.llm-repl.tape-test
                                            'us.whitford.llm-repl.registry-test
                                            'us.whitford.llm-repl.completion-test
+                                           'us.whitford.llm-repl.client-test
                                            'us.whitford.llm-repl-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

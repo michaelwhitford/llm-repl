@@ -1,4 +1,5 @@
 .nrepl-port
+.llm-repl/
 .cpcache/
 target/
 .clj-kondo/*

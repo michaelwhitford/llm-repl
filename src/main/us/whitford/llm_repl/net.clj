@@ -7,9 +7,11 @@
    and now the TUI itself — all drive the SAME core over the SAME wire.
 
    Built on `bencode.core`, which is the ONE codec both runtimes share: bundled
-   in babashka, and a transitive dep of nrepl.server on the JVM. So — unlike
-   start-nrepl! — there is NO bb?/JVM branch here: one implementation, both
-   runtimes, zero new deps.
+   in babashka, an explicit dep (nrepl/bencode) on the JVM — NOT transitive
+   from nrepl/nrepl, whose own codec is the internal nrepl.bencode ns (the
+   twin suite caught that gap the first time a test loaded this ns under the
+   JVM). So — unlike start-nrepl! — there is NO bb?/JVM branch here: one
+   implementation, both runtimes.
 
    nREPL ≡ bencode maps over a socket. A request carries a unique \"id\";
    responses arrive as one-or-more frames tagged with that id, terminated by a
@@ -42,7 +44,7 @@
   ([host port] (connect host port 5000))
   ([host port timeout-ms]
    (let [sock (Socket.)]
-     (.connect sock (InetSocketAddress. ^String host ^long (int port)) (int timeout-ms))
+     (.connect sock (InetSocketAddress. ^String host (int port)) (int timeout-ms))
      {:socket sock
       :in     (PushbackInputStream. (.getInputStream sock))
       :out    (BufferedOutputStream. (.getOutputStream sock))
