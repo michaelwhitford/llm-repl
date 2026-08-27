@@ -123,6 +123,48 @@ restore on exit.
   open! dies with the process (the human hit this). Config root `:tools`
   (roster/default-tools → default-config, twin of :default-model) makes
   armed-ness a MACHINE fact; per-session {:tools nil} still disarms.
+- ✅ CROSS-MACHINE REPL (`:nrepl {:bind}` ⊕ `:model/host`): two additive
+  knobs let the repl leave loopback. `:bind` (default 127.0.0.1 — native
+  topology unchanged) threads through BOTH start-nrepl! branches (bb ∧ JVM);
+  banner reports the ACTUAL bind, not a hardcoded loopback claim. "0.0.0.0"
+  opens attach beyond loopback — docstring names the contract (nREPL ≡
+  UNAUTHENTICATED eval; open only behind a wall). `:model/host` (default
+  localhost) builds roster's base-url — containerized repl names the host
+  gateway, a LAN llama.cpp box its hostname; additive twin of :model/port.
+  builtin-defaults carries :bind explicitly (per-key :nrepl merge stays
+  honest). Prereq for docker/; live-verified both runtimes from a foreign
+  CWD (bb ∧ JVM bind *:7899 with the knob, 127.0.0.1 without).
+- ✅ DOCKER (`docker/` — the CONTAINER is the sandbox wall; `/work` is the
+  seam): plain OCI Dockerfile (podman ∧ docker identical, no BuildKit-isms) —
+  bb base (`ghcr.io/babashka/babashka`) ⊕ headless JRE (bb is the RUNTIME but
+  deps RESOLUTION is a JVM program — `bb prepare` dies without java; the JRE
+  also lets a runtime re-resolve degrade instead of crash), non-root `repl`
+  user (defense-in-depth: armed eval has NO in-process sandbox — load-string
+  full power — so the wall IS the sandbox), deps warmed as their own layer
+  (source edits rebuild in seconds, offline at runtime). ENTRYPOINT `bb
+  --config /app/bb.edn --deps-root /app` keeps bb.edn the ONE invocation seam
+  (Dockerfile never learns main's coordinates); WORKDIR `/work` is the mount
+  seam — everything keying off CWD crosses here: `.nrepl-port` lands host-side
+  (editor auto-attach), `./config.edn` read from here (later-wins over
+  ~/.config), files the model evals into existence appear here. THE ONE
+  DELIBERATE HOLE in the wall — user-chosen, user-sized. CMD `nrepl` (headless
+  attach-and-drive); TUI ≡ `-it … llm-repl` (surface swap, same image). Config
+  NEVER baked in (nucleus/licensing boundary rides the mounted config, outside
+  repo ∧ image). docker/config.edn ≡ the container contract as example: FIXED
+  port 7899 (7888 collides with the classic editor-nREPL default — found
+  live), :bind "0.0.0.0" inside, published loopback-only 1:1 (127.0.0.1:7899:
+  7899) so the .nrepl-port stays truthful host-side; models point at
+  host.containers.internal (podman's host gateway). RUNNING NOW: image built,
+  container up with a host work dir bind-mounted at /work. Live-verified under
+  podman machine (macOS): non-root mount write ✓, .nrepl-port → host ✓, eval
+  round-trip 30007 ✓, host gateway reaches llama.cpp :5100 ✓, FULL completion
+  through the wall (open! ⊕ eval! → "containment verified" @ depth 2).
+- ✅ KONDO / `p/await!`: statecharts.promise bridges to promesa as a SOFT dep
+  — `await!` is created by `(intern *ns* 'await! (resolve 'promesa.core/
+  await!))` at LOAD time, so static analysis finds no definition and flags
+  every call site while the runtime resolves fine (assert: runtime > source).
+  Remedy per lint policy: ns-scoped unresolved-var exclude for exactly that
+  one lying ns — no inline noise, no global suppression (clj-kondo 0 warnings).
 
 ## Invariants worth not rediscovering
 
@@ -135,6 +177,15 @@ restore on exit.
   escapement now require a RELEASE, not a sibling edit; bb.edn ∧ deps.edn
   carry the SAME coordinate (keep in sync).
 - guardrails stays pinned 1.2.16 transitively — don't override.
+- Container nREPL: `:port 0` is ACTIVELY WRONG in a container — it advertises
+  a port nobody published. Use FIXED :port 7899 (7888 collides with the
+  classic editor-nREPL default) + :bind "0.0.0.0", published 1:1 loopback-only
+  so `.nrepl-port` stays truthful host-side.
+- Docker image needs a headless JRE even though bb is the runtime: `bb
+  prepare` (deps resolution) is a JVM program — maven deps (escapement) can't
+  warm without java.
+- nREPL ≡ UNAUTHENTICATED eval — `:bind "0.0.0.0"` only ever behind a wall
+  (container loopback-only publish); NEVER expose to the LAN.
 - Session `{:thinking false}` WORKS (live-verified): build-request normalizes
   it → modeled `{:type :disabled}` → llamacpp `chat_template_kwargs
   {enable_thinking false}`; `true` ≡ omit ≡ server default (thinking ON).
