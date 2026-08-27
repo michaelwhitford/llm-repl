@@ -37,25 +37,25 @@ schema (humanized errors), the config prompt stack (`:system-prompt` ∧
 trace-durability (escapement capture). Queue: ⚪ formal-config-malli ∧
 ⚪ trace-durability.
 
-**Refactor steps 1–4 DONE** — (1) `2aa7513` `tape` (values) ⊕ D6 twin
+**Refactor steps 1–5 DONE** — (1) `2aa7513` `tape` (values) ⊕ D6 twin
 runner; (2) `4e89759` `registry` (runtime) — mutate! chokepoint, events-as-
 data, wait-for-event!, D2 race dissolved (memories/swap-vals-race-detection);
 (3) `aff3a1b` `completion` (io) — :complete-fn contract named ⊕ D4
-amendments ({slug} orientation, structural budget, loud empty-finals);
-(4) `02a71e8` api ns `us.whitford.llm-repl` — core.clj DELETED, compact!
-born (one-true-write: explicit-index race-free, every outcome a receipt),
-ONE grammar (parse-submission) consumed by plain loop ∧ tui wire,
-variant-slug exported (tui.frame consumes @ step 6). RATIFIED: registry-
-direct — client wire strings fetch @…registry/* fully qualified, NO api
-delegations. Suite: 94 tests / 234 assertions, both runtimes.
-compact-live-trial (queue) is now UNBLOCKED.
+amendments; (4) `02a71e8` api ns `us.whitford.llm-repl` — core.clj DELETED,
+compact! born, ONE grammar, RATIFIED registry-direct client wire strings;
+(5) `75df5a0` `client` — D3 complete: long-poll on wait-for-event! ⊕
+version*-gated registry fetch (version-poll fallback), attach-loss
+fail-loud (status deref → :lost → TUI teardown+exit; live-verified,
+closes tui-dead-daemon-silent), structural suppress-echo (regex dead),
+poll-cycle! ≡ injectable-fetch test seam. Twin caught 2 latent JVM breaks
+@ net.clj first-load (memories/twin-first-load-latent-breaks). Suite: 104
+tests / 285 assertions, both runtimes. compact-live-trial UNBLOCKED;
+attach matrix fully human-verified (✅ tui-local-daemon-human-pass).
 
-**Next pickup: refactor step 5 — `client` version-poll ⊕ long-poll.**
-RemoteCore rides registry/version* (poll tiny number, fetch on change) ⊕
-wait-for-event! long-poll; structural suppress-echo (kill the :repl/id
-regex at client.clj form) ⊕ attach-loss fail-loud (live-found: dead daemon
-renders as live — memories/tui-dead-daemon-silent). Full order in
-architecture § refactor order.
+**Next pickup: refactor step 6 — `tui.frame`/`tui.term` split.**
+Pure frame ⊕ terminal io split, headless frame tests, `main` rewire
+(tui.frame consumes variant-slug from step 4). Full order in architecture
+§ refactor order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -76,4 +76,4 @@ architecture § refactor order.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-In progress: ▶ v030-refactor — steps 1–4 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8); next ≡ step 5 (client version-poll/long-poll, structural suppress-echo). compact-live-trial unblocked.
+In progress: ▶ v030-refactor — steps 1–5 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8, 75df5a0); next ≡ step 6 (tui.frame/tui.term split, headless tests, main rewire). compact-live-trial unblocked.

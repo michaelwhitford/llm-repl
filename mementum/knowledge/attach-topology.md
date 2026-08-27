@@ -56,6 +56,16 @@ a fresh empty session would mask a down container as lost state — the worst
 failure mode. Local is only ever the DEFAULT, chosen when no attach is
 requested at all.
 
+The contract extends MID-SESSION (v0.3.0 refactor step 5): the client's
+poll loop carries wire failures as DATA (`fetch → {:ok v} | {:err reason}` —
+never a nil that reads as "no change"); at 3 consecutive failures the
+client's `status` deref-able flips `{:attach :lost}`, the notify callback
+wakes the wire layer, and the TUI tears down → prints the reason → exits 1.
+A dead core never renders as a live one
+(memories/tui-dead-daemon-silent — the live-found bug that motivated this).
+Live-verified: `bb stop` under an attached RemoteCore → `:lost "Broken
+pipe"` within ~2.5s.
+
 `:attach` shapes: `"host:port"` | `"port"` | `{:host :port}` | `true`
 (≡ read ./.nrepl-port) | false/absent (≡ local). A project's ./config.edn
 `{:attach false}` opts OUT of a global container attach (config chain:
