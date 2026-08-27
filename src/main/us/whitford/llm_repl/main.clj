@@ -18,6 +18,8 @@
    `use!` switches the loop's current session; the prompt shows slug ∧ depth."
   (:require
    [clojure.string :as str]
+   [us.whitford.llm-repl.client :as client]
+   [us.whitford.llm-repl.daemon :as daemon]
    ;; :refer :all — deliberate: THIS ns is the loop's eval surface; every core
    ;; command must resolve bare in a typed (form). The alias stays for main's
    ;; own code (reads qualified).
@@ -140,112 +142,182 @@
   (let [s (str/replace (str s) #"\s+" " ")]
     (if (> (count s) n) (str (subs s 0 n) "…") s)))
 
-(defn- form-echo!
-  "Echo a form's VALUE onto core's receipt stream — but ONLY when core didn't
-   already emit a receipt at the command seam (command returns carry :repl/id;
-   their receipts come from core). Payloads live in the tree; arms are
-   sessions, tab to them."
-  [res]
-  (when-not (and (map? res) (:repl/id res))
-    (core/event! (str "=> " (ellipsize (pr-str res) 60)))))
+(defn- use-form?
+  "True when `text` is a (use! …) form — focus is a LOCAL-surface concern, so
+   the wire layer intercepts it (never sends it across a remote attach; the
+   container's use! would retarget the container, not this pane)."
+  [text]
+  (try
+    (let [f (read-string text)]
+      (and (seq? f) (= 'use! (first f))))
+    (catch Throwable _ false)))
+
+(defn- do-use!
+  "Handle (use! slug [opts]) LOCALLY: ensure the session exists on the core
+   (local or remote), then move THIS surface's focus. Args are literals."
+  [client state text]
+  (future
+    (try
+      (let [[_ slug opts] (read-string text)]
+        (client/ensure! client slug (or opts {}))
+        (reset! current* slug)
+        (swap! state assoc :slug slug :scroll 0 :render-dirty true)
+        (core/event! (str "use! " slug)))
+      (catch Throwable t (core/event! (str "error: " (ex-message t)))))))
 
 (defn- show-help!
-  "The TUI help overlay: (core/help) rendered OVER the right pane (a view
-   swap — the tape is untouched; chrome never enters the tape). The wire
-   layer renders because tui stays core-free — content is injected."
-  [h]
+  "The TUI help overlay: the client's (help) string rendered OVER the right
+   pane (a view swap — the tape is untouched; chrome never enters the tape).
+   The wire layer renders because tui stays core-free — content is injected;
+   the client fetches it (local ≡ core/help, remote ≡ eval over the wire)."
+  [client h]
   (tui/show-overlay! (:state h)
                      {:title "help"    ; frame decorates: ⧉ + esc hint
-                      :lines (str/split-lines (core/help))}))
+                      :lines (str/split-lines (client/help-text client))}))
 
 (defn- tui-submit!
   "The submission dispatch — same grammar as the plain loop, but every branch
    runs on a WORKER thread so the UI stays live (pending marker meanwhile;
-   the plain loop blocks here, the TUI does not). Receipts flow through
-   core/events* — the SAME stream attached clients write — never a TUI-local
-   side channel (equal clients in the chrome layer too). `(help)` is
-   intercepted to the overlay (evaluating it would echo a 60-char ellipsis —
-   useless; nREPL clients call core/help directly and get the string)."
-  [h text]
+   the plain loop blocks here, the TUI does not). Everything routes through the
+   `client` seam: local ≡ in-process core, remote ≡ nREPL to a container core.
+   Receipts flow through the client's events stream — the SAME stream attached
+   clients write. `(help)` and `(use! …)` are intercepted (help would echo a
+   useless ellipsis; use! is local focus). Captured *out* pops as an overlay;
+   the VALUE stays a footer receipt (unless it's a command receipt itself —
+   :suppress-echo? — so the tree isn't doubled)."
+  [client h text]
   (let [state (:state h)]
     (cond
       (= (str/trim text) "(help)")
-      (show-help! h)
+      (show-help! client h)
+
+      (and (str/starts-with? text "(") (use-form? text))
+      (do-use! client state text)
 
       (str/starts-with? text "(")
       (future
-        ;; CAPTURE printed output — raw *out* lands on the alt screen and the
-        ;; next frame paints over it (one flicker, output lost). Output is a
-        ;; DOCUMENT: it pops as an overlay (esc dismisses), the VALUE stays a
-        ;; footer receipt. (println (help)) thus works in the TUI too.
-        (let [sw (java.io.StringWriter.)]
-          (try (binding [*ns*  (find-ns 'us.whitford.llm-repl.main)
-                         *out* sw
-                         *err* sw]
-                 (form-echo! (eval (read-string text))))
-               (catch Throwable t (core/event! (str "error: " (ex-message t)))))
-          (let [out (str sw)]
-            (when-not (str/blank? out)
-              (tui/show-overlay! state {:title (ellipsize text 28)
-                                        :lines (str/split-lines out)})))))
+        (let [{:keys [value out err suppress-echo?]} (client/form client text)]
+          (cond
+            err (core/event! (str "error: " err))
+            (not suppress-echo?) (core/event! (str "=> " (ellipsize value 60))))
+          (when-not (str/blank? out)
+            (tui/show-overlay! state {:title (ellipsize text 28)
+                                      :lines (str/split-lines out)}))))
 
       :else
       (let [slug (:slug @state)]
         (swap! state assoc :pending slug :render-dirty true)
         (future
-          ;; eval! emits its own …/✓/✗ receipts at the seam
-          (core/eval! slug text)
+          ;; prose! emits its own …/✓/✗ receipts at the core seam
+          (client/prose! client slug text)
           (swap! state assoc :pending nil :render-dirty true))))))
 
 (defn run-tui
-  "Boot the TUI surface over core's registry and BLOCK until it stops.
-   The add-watches are the multi-client moment: any registry change (an
-   attached nREPL client's eval!, a worker completing) OR any receipt on
-   core/events* (a tapeless trampoline!/bounce! leaving its trace) flips the
-   dirty flag; the ticker repaints within ~33ms. No polling, no push
-   protocol."
-  [nrepl-port]
+  "Boot the TUI over the CLIENT's registry/events deref-ables and BLOCK until
+   it stops. The client's notify! is the multi-client moment: local ≡
+   add-watch on sessions*/events*, remote ≡ a poll thread against the
+   container — either way a change flips the dirty flag and the ticker
+   repaints within ~33ms. The frame never knows which; :registry is just a
+   deref-able (core's atom, or a cache atom kept fresh over the wire)."
+  [client nrepl-port]
   (let [h* (promise)
-        h  (tui/start! {:registry   core/sessions*
-                        :events     core/events*
+        h  (tui/start! {:registry   (client/registry client)
+                        :events     (client/events client)
                         :slug       @current*
                         :nrepl-port nrepl-port
                         ;; deferred handle: the input thread starts inside
                         ;; start!, before we hold h — close over the promise
-                        :on-submit  (fn [text] (tui-submit! @h* text))
-                        :on-help    (fn [] (show-help! @h*))
-                        :on-stop    (fn []
-                                      (remove-watch core/sessions* ::tui)
-                                      (remove-watch core/events* ::tui))})]
+                        :on-submit  (fn [text] (tui-submit! client @h* text))
+                        :on-help    (fn [] (show-help! client @h*))
+                        :on-stop    (fn [] (client/shutdown! client))})]
     (deliver h* h)
     (reset! tui* h)
-    ;; TWO watches, one repaint path: tape changes AND receipts — an attached
-    ;; client's trampoline! never touches the registry, but its receipts land
-    (add-watch core/sessions* ::tui
-               (fn [_ _ _ _] (tui/request-render! (:state h))))
-    (add-watch core/events* ::tui
-               (fn [_ _ _ _] (tui/request-render! (:state h))))
+    (client/notify! client (fn [] (tui/request-render! (:state h))))
     @(promise)))
 
-(defn -main
-  "Entry: nREPL up first (attach works even while a completion is in flight),
-   then the surface: TUI on an interactive terminal, --plain for the line
-   loop, --headless for nREPL only (park forever)."
-  [& args]
-  (let [args      (set args)
-        headless? (contains? args "--headless")
-        plain?    (contains? args "--plain")
-        port      (start-nrepl!)]
-    (core/open! @current*)
+(defn- run-attached
+  "Attach the REMOTE TUI to the core at `spec` (the container) and drive it.
+   An EXPLICIT attach request — --attach flag OR :attach config — is a
+   CONTRACT: if it can't be honored (no target, no TTY, connection refused)
+   we FAIL LOUD and exit, never silently start a local repl. Falling back
+   would mask a down container as a mystery FRESH session (empty tape, lost
+   state) — the worst failure mode. Local is only ever the DEFAULT, chosen
+   when no attach is requested at all (roster/attach-spec ≡ nil). Phase-1 is
+   TUI-only (the render surface is the whole point)."
+  [spec]
+  (let [target (daemon/attach-target spec)]
     (cond
-      headless?
-      (do (banner port) @(promise))
+      (nil? target)
+      (do (println "llm-repl — attach requested but no target resolved (no host:port and no ./.nrepl-port)")
+          (System/exit 1))
 
-      (and (not plain?) (tui/interactive-terminal?))
-      (run-tui port)
+      (not (tui/interactive-terminal?))
+      (do (println "llm-repl — attach requires an interactive terminal (phase-1: TUI only)")
+          (System/exit 1))
 
       :else
-      (do (banner port)
-          (run-loop)
-          (println "bye")
-          (System/exit 0)))))
+      (let [[host port] target
+            client      (try
+                          (client/remote host port)
+                          (catch Exception e
+                            (println (str "llm-repl — could not attach to " host ":" port
+                                          " (" (.getMessage e) ")"))
+                            (System/exit 1)))]
+        (reset! current* (or (some-> (client/registry client) deref keys first) :scratch))
+        (println (str "llm-repl — attached to " host ":" port))
+        (run-tui client port)))))
+
+(defn- run-local
+  "The in-process core surface — NOT a daemon, NOT the TUI. :headless ≡ the
+   DAEMON body (also what `bb nrepl` and the container run): start nREPL, open
+   scratch, park forever. :plain ≡ a bootstrap line loop driving the in-process
+   core (debug/no-TTY). The TUI NEVER runs here — it always ATTACHES (local
+   daemon or container), so there is no in-process TUI+core path left."
+  [mode]
+  (let [port (start-nrepl!)]
+    (core/open! @current*)
+    (case mode
+      :headless (do (banner port) @(promise))
+      :plain    (do (banner port) (run-loop) (println "bye") (System/exit 0)))))
+
+(defn- run-local-daemon
+  "Local default (no :attach): discover-or-spawn THIS project's daemon and
+   attach the TUI to it over loopback — the TUI is a pure client of a separate,
+   persistent core. Quit ≡ DETACH (client sockets close, the TUI process exits,
+   the daemon keeps running; `bb stop` ends it). No TTY → the in-process plain
+   loop (a TUI can't render without a terminal)."
+  []
+  (if (tui/interactive-terminal?)
+    (let [pdir        (daemon/project-dir)
+          [st fresh?] (daemon/ensure! pdir)
+          client      (client/remote "127.0.0.1" (:port st))]
+      (reset! current* (or (some-> (client/registry client) deref keys first) :scratch))
+      (println (str "llm-repl — attached to local repl (pid " (:pid st) " port " (:port st) ")"
+                    (when fresh? " [spawned]") " — `bb stop` to shut it down"))
+      (run-tui client (:port st)))
+    (run-local :plain)))
+
+(defn -main
+  "Entry. Explicit flags first: --headless / --plain are LOCAL surfaces
+   (a container's own `bb nrepl` ≡ --headless, so it never auto-attaches to
+   itself); --attach forces the remote TUI. With no flag, config `:attach`
+   makes `bb llm-repl` auto-attach to the configured host:port. Attach is a
+   CONTRACT — an explicit request (flag or config) that can't connect FAILS
+   LOUD and exits; local is only the DEFAULT, when no attach is requested."
+  [& args]
+  (let [argv         (vec args)
+        argset       (set args)
+        headless?    (contains? argset "--headless")
+        plain?       (contains? argset "--plain")
+        attach-idx   (.indexOf argv "--attach")
+        flag-attach? (>= attach-idx 0)
+        flag-arg     (when flag-attach?
+                       (let [nxt (get argv (inc attach-idx))]
+                         (when (and nxt (not (str/starts-with? nxt "--"))) nxt)))]
+    (cond
+      headless?    (run-local :headless)
+      plain?       (run-local :plain)
+      flag-attach? (run-attached (or flag-arg ""))
+      :else        (if-let [cfg (roster/attach-spec)]
+                     (run-attached cfg)
+                     (run-local-daemon)))))

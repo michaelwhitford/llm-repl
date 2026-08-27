@@ -73,4 +73,21 @@
  ;; attach surface beyond loopback — nREPL is unauthenticated eval, so only
  ;; do that behind a wall (e.g. a container publishing loopback-only; see
  ;; docker/config.edn, which pairs it with a fixed port).
- :nrepl {:port 0}}
+ :nrepl {:port 0}
+
+ ;; :attach — make `bb llm-repl` (no flag) auto-attach its TUI to a core
+ ;; running ELSEWHERE (e.g. the container) instead of starting a local one.
+ ;; The clojure half evals where that core lives (next to /work and the
+ ;; model); prose turns fire there too — the render surface is just remote.
+ ;; Attach is a CONTRACT: if this is set and the target is unreachable, the
+ ;; repl ERRORS AND EXITS (a fresh local session would silently mask a down
+ ;; container as lost state). Unset ≡ local; there is no silent fallback.
+ ;; Shapes:
+ ;;   "127.0.0.1:7899"       host:port
+ ;;   "7899"                 bare port (host defaults to 127.0.0.1)
+ ;;   {:host "…" :port 7899}  map form
+ ;;   true                   read ./.nrepl-port (the mounted /work seam —
+ ;;                          zero-config when run from the bind-mounted dir)
+ ;; --attach on the CLI forces/overrides this; --headless/--plain ignore it.
+ ;; :attach "127.0.0.1:7899"
+ }

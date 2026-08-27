@@ -7,6 +7,15 @@
  {llm-repl {:doc      "Start the llm-repl: TUI (or --plain / --headless) + nREPL attach port"
             :requires ([us.whitford.llm-repl.main :as main])
             :task     (apply main/-main *command-line-args*)}
-  nrepl    {:doc      "Headless llm-repl: nREPL server only (attach-and-drive)"
+  nrepl    {:doc      "Headless llm-repl: nREPL server only (the daemon body / container)"
             :requires ([us.whitford.llm-repl.main :as main])
-            :task     (main/-main "--headless")}}}
+            :task     (main/-main "--headless")}
+  start    {:doc      "Start (or reuse) this project's local llm-repl daemon"
+            :requires ([us.whitford.llm-repl.daemon :as daemon])
+            :task     (daemon/start-cli)}
+  stop     {:doc      "Stop this project's local llm-repl daemon (never a container)"
+            :requires ([us.whitford.llm-repl.daemon :as daemon])
+            :task     (daemon/stop-cli)}
+  status   {:doc      "Show this project's local llm-repl daemon status"
+            :requires ([us.whitford.llm-repl.daemon :as daemon])
+            :task     (daemon/status-cli)}}}

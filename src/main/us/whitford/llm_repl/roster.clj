@@ -84,6 +84,23 @@
   []
   (:default-model (config)))
 
+(defn attach-spec
+  "The configured attach target as a normalized spec STRING, or nil when unset
+   (≡ local). Config `:attach` may be:
+     \"host:port\" / \"port\"   → itself
+     {:host \"…\" :port N}      → \"host:port\"
+     true                       → \"\" (blank ≡ read ./.nrepl-port at parse time)
+     false / absent             → nil
+   The string↔[host port] parse lives in daemon/attach-target; this is only the
+   config-shape normalization, so main (dispatch) and daemon (status) agree."
+  []
+  (let [a (:attach (config))]
+    (cond
+      (string? a) a
+      (true? a)   ""
+      (map? a)    (str (or (:host a) "127.0.0.1") ":" (:port a))
+      :else       nil)))
+
 (defn default-tools
   "The :tools default an unqualified session runs — config root :tools
    (true ≡ every registered tool | [kw …] ≡ whitelist | absent/nil ≡ none).
