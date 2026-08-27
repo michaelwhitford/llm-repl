@@ -285,9 +285,17 @@ Amendments from the 2026-08-27 container session:
   `<proj>/.llm-repl/tapes/` EDN, written at mutation or on SIGTERM. The
   session fold (`tape/apply-fold`) is the cross-session compression when it
   lands.
-- **MCP facade** — compiles its tool list from `(manual)`: `:summary` for
-  tool descriptions, `:doc` for depth. Sits on the api ns only. With D4's
-  manual schemas, input shapes ride `malli->json-schema` for free.
+- **MCP facade** — SKIPPED by decision (2026-08-27): llm-repl is squarely
+  aimed at Clojure, and nREPL is THE wire — "a clojure repl tmux with nicer
+  semantics" (sessions ≡ windows that are immutable forkable VALUES; attach ≡
+  many equal clients; fork-the-past has no tmux analog). For Clojure-speaking
+  clients eval IS the op protocol: forms are the messages, `ns-publics ≡ the
+  op table`, D3's version counter ∧ `wait-for-event!` are the streaming.
+  Non-Clojure agents get a RECIPE page (connect via bencode/bb one-liner,
+  eval, long-poll) — documentation, not a component; the `(manual)` seam
+  feeds it. Un-skip only on demonstrated MCP-client demand; it still sits on
+  the api ns only, so nothing depends on its absence. D4's manual schemas
+  keep `malli->json-schema` available if that day comes.
 - **Trace durability** — escapement's capture layer (`capture.cljc`
   ArtifactStore ⊕ `transcript.clj` single-writer JSONL ⊕ `storage/disk` ⊕
   `replay`) as the durable per-turn payload store: full request/response/
