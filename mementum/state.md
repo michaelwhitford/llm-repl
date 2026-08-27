@@ -37,23 +37,23 @@ schema (humanized errors), the config prompt stack (`:system-prompt` ∧
 trace-durability (escapement capture). Queue: ⚪ formal-config-malli ∧
 ⚪ trace-durability.
 
-**Refactor steps 1–3 DONE** — (1) `2aa7513` `tape` (values) ⊕ D6 twin
+**Refactor steps 1–4 DONE** — (1) `2aa7513` `tape` (values) ⊕ D6 twin
 runner; (2) `4e89759` `registry` (runtime) — mutate! chokepoint, events-as-
 data, wait-for-event!, D2 race dissolved (memories/swap-vals-race-detection);
-core keeps sessions*/events*/event! DELEGATIONS for wire compat until step 5;
-(3) `aff3a1b` `completion` (io) — the :complete-fn contract named, D4
-amendments landed: {slug} orientation template, structural+visible budget
-(:tools stripped at boundary, true remaining counts), loud empty-finals
-(empty-completion-marker ⊕ :error receipt). Suite: 81 tests / 200
-assertions, both runtimes. NOTE: tools-system's orientation text names
-`llm-repl.core` — update in lockstep at step 4 (memories/
-bb-jvm-private-var-twin-trap also from this step).
+(3) `aff3a1b` `completion` (io) — :complete-fn contract named ⊕ D4
+amendments ({slug} orientation, structural budget, loud empty-finals);
+(4) `02a71e8` api ns `us.whitford.llm-repl` — core.clj DELETED, compact!
+born (one-true-write: explicit-index race-free, every outcome a receipt),
+ONE grammar (parse-submission) consumed by plain loop ∧ tui wire,
+variant-slug exported (tui.frame consumes @ step 6). RATIFIED: registry-
+direct — client wire strings fetch @…registry/* fully qualified, NO api
+delegations. Suite: 94 tests / 234 assertions, both runtimes.
+compact-live-trial (queue) is now UNBLOCKED.
 
-**Next pickup: refactor step 4 — api ns `us.whitford.llm-repl`.** Commands ⊕
-ONE submission grammar ⊕ `compact!` (routes tape/apply-compaction-at, band ⊕
-⚡ receipt ⊕ :original retained); eval-rf moves; core.clj DELETED (main/tui/
-client rewires ride steps 5–6; check wire-compat delegations land in api or
-die). Full order in architecture § refactor order.
+**Next pickup: refactor step 5 — `client` version-poll ⊕ long-poll.**
+RemoteCore rides registry/version* (poll tiny number, fetch on change) ⊕
+wait-for-event! long-poll; structural suppress-echo (kill the :repl/id
+regex at client.clj form). Full order in architecture § refactor order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -74,4 +74,4 @@ die). Full order in architecture § refactor order.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-In progress: ▶ v030-refactor — steps 1–3 ✅ (2aa7513, 4e89759, aff3a1b); next ≡ step 4 (api ns ⊕ compact!; core.clj deleted).
+In progress: ▶ v030-refactor — steps 1–4 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8); next ≡ step 5 (client version-poll/long-poll, structural suppress-echo). compact-live-trial unblocked.
