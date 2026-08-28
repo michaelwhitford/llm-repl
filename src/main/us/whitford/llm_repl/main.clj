@@ -339,7 +339,16 @@
   (if (tui/interactive-terminal?)
     (let [pdir        (daemon/project-dir)
           [st fresh?] (daemon/ensure! pdir)
-          client      (client/remote "127.0.0.1" (:port st))]
+          ;; a DISCOVERED daemon can be older than this client (it survives
+          ;; upgrades by design — that is the point of a persistent core), so
+          ;; the attach contract applies here too: say why, say the fix, exit
+          client      (try
+                        (client/remote "127.0.0.1" (:port st))
+                        (catch Exception e
+                          (println (str "llm-repl — could not attach to the local daemon "
+                                        "(pid " (:pid st) " port " (:port st) "): "
+                                        (ex-message e)))
+                          (System/exit 1)))]
       (reset! current* (or (some-> (client/view client) deref :index keys first) :scratch))
       (println (str "llm-repl — attached to local repl (pid " (:pid st) " port " (:port st) ")"
                     (when fresh? " [spawned]") " — `bb stop` to shut it down"))

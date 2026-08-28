@@ -147,8 +147,12 @@
     (let [r (net/eval-msg conn code (:session conn))]
       (if (net/ok? r)
         {:ok (edn/read-string (net/value r))}
-        {:err (or (:ex r)
-                  (some-> (:err r) str/trim)
+        ;; :err (the printed message) BEFORE :ex (the exception CLASS) — nREPL
+        ;; sends both, and only the first one says what happened. Preferring
+        ;; :ex produced reasons like "class clojure.lang.ExceptionInfo", which
+        ;; is loud and useless; an attach-loss banner has one job.
+        {:err (or (some-> (:err r) str/trim not-empty)
+                  (:ex r)
                   (str "status " (:status r)))}))
     (catch Throwable t
       {:err (or (ex-message t) (str (type t)))})))
@@ -376,6 +380,21 @@
   (let [pconn (open-conn host port)
         sconn (open-conn host port)
         fconn (open-conn host port)]
+    ;; PROTOCOL CHECK, not a version number: does this core speak `view`?
+    ;; A core older than the projection answers every view fetch with
+    ;; "Unable to resolve symbol", which the poll thread would count as three
+    ;; strikes and report as a generic attach-loss — a stale daemon looking
+    ;; exactly like a dead one. Ask once, at attach, and say the actual next
+    ;; move (house style: fail loud WITH instructions, as daemon/spawn-cmd
+    ;; does for the JVM). Absence of `wait-for-event!` stays a graceful
+    ;; fallback because there IS one; there is no fallback for the payload.
+    (when-not (true? (:ok (fetch pconn "(some? (resolve 'us.whitford.llm-repl.registry/view))")))
+      (net/close pconn) (net/close sconn) (net/close fconn)
+      (throw (ex-info (str "the core at " host ":" port " predates the view protocol "
+                           "(registry/view) — it is running older code than this client. "
+                           "Restart it: `bb stop` then `bb llm-repl` for a local daemon, "
+                           "or rebuild/restart the container.")
+                      {:host host :port port :missing 'us.whitford.llm-repl.registry/view})))
     ;; the submit session refers the api ns so bare (open!)/(fork!) forms
     ;; resolve — both a typed (form) AND ensure!/prose!'s own format strings
     ;; above (registry-direct: no `c` alias, this is the only api access
