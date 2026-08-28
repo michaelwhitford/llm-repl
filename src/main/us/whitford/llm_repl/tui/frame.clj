@@ -74,6 +74,16 @@
           (conj (str (theme/sgr-wrap theme/chart-color "  …   ")
                      (theme/paint theme :status/waiting "thinking")))))))
 
+(defn loading-lines
+  "The tape pane when the view holds NO tape for the focused session YET
+   (`:tape` nil ≡ not-fetched, distinct from `[]` ≡ open with no turns). Lives
+   for the round trip between a focus change and its `registry/view` answer.
+   The alternatives were both lies: keep painting the PREVIOUS session's
+   messages under the new title, or flash the welcome banner at a session
+   that has a long history."
+  [w]
+  [(theme/sgr-wrap theme/debug-color (cmp/truncate-display "  …   loading" w))])
+
 (defn welcome-lines
   "The TUI's in-idiom banner: dim grammar hints shown in the tape pane WHILE
    THE TAPE IS EMPTY (the printed banner belongs to plain/headless — the alt
@@ -103,17 +113,18 @@
 ;; ── chrome ────────────────────────────────────────────────────────────────────
 
 (defn title-line
-  [{:keys [slug nrepl-port]} reg]
-  (let [model (get-in reg [slug :config :model])]
+  [{:keys [slug nrepl-port]} index]
+  (let [model (get-in index [slug :model])]
     (str "llm-repl · " slug " · " model " · nREPL :" nrepl-port)))
 
 ;; ── the fork tree (left pane) ─────────────────────────────────────────────────
 
 (defn- children-of
   "Children of `slug`, ordered by branch point then name — the fork tree's
-   edges, inverted from :forked-from/:forked-at."
-  [reg slug]
-  (->> reg
+   edges, inverted from :forked-from/:forked-at. Reads the INDEX (edges are
+   registry-wide; message bodies never were part of this)."
+  [index slug]
+  (->> index
        (filter (fn [[_ s]] (= slug (:forked-from s))))
        (sort-by (fn [[k s]] [(or (:forked-at s) 0) (str k)]))
        (map key)))
@@ -121,10 +132,10 @@
 (defn dfs-order
   "Every session in depth-first tree order (roots sorted by name) — the order
    tab-cycling walks, so MOVEMENT ON SCREEN ≡ movement in the tree."
-  [reg]
-  (let [roots (->> reg (remove (fn [[_ s]] (:forked-from s))) (map key) (sort-by str))
+  [index]
+  (let [roots (->> index (remove (fn [[_ s]] (:forked-from s))) (map key) (sort-by str))
         walk  (fn walk [slug]
-                (cons slug (mapcat walk (children-of reg slug))))]
+                (cons slug (mapcat walk (children-of index slug))))]
     (vec (mapcat walk roots))))
 
 (defn short-name
@@ -150,33 +161,33 @@
    takes (…, theme, w) so `render` calls them uniformly. Note the shadow —
    `theme` is also the escapement ns alias this file uses, so an unused
    param of that name reads as used until the linter says otherwise."
-  [reg current _theme w]
+  [index current _theme w]
   (let [walk (fn walk [slug parent prefix last?]
-               (let [s     (get reg slug)
+               (let [s     (get index slug)
                      label (str (short-name slug parent)
-                                "·" (count (:tape s))
+                                "·" (:depth s)
                                 (when (:forked-at s) (str " @" (:forked-at s))))
                      conn  (cond (nil? parent) "" last? "└ " :else "├ ")
                      line  (str prefix conn
                                 (if (= slug current)
                                   (str cmp/reverse-on-s " " label " " theme/reset-attrs-s)
                                   label))
-                     kids  (vec (children-of reg slug))
+                     kids  (vec (children-of index slug))
                      kid-prefix (str prefix (cond (nil? parent) "" last? "  " :else "│ "))]
                  (into [(cmp/truncate-display line w)]
                        (mapcat (fn [i k]
                                  (walk k slug kid-prefix (= i (dec (count kids)))))
                                (range (count kids)) kids))))
-        roots (->> reg (remove (fn [[_ s]] (:forked-from s))) (map key) (sort-by str))]
+        roots (->> index (remove (fn [[_ s]] (:forked-from s))) (map key) (sort-by str))]
     (vec (mapcat #(walk % nil "" true) roots))))
 
 (defn sessions-line
   "The registry index strip: every tape as slug·depth (↰parent when forked),
    current session in reverse video."
-  [reg current theme w]
-  (->> (sort-by (comp str key) reg)
-       (map (fn [[slug {:keys [tape forked-from forked-at]}]]
-              (let [cell (str (name slug) "·" (count tape)
+  [index current theme w]
+  (->> (sort-by (comp str key) index)
+       (map (fn [[slug {:keys [depth forked-from forked-at]}]]
+              (let [cell (str (name slug) "·" depth
                               (when forked-from
                                 (str "↰" (name forked-from)
                                      (when forked-at (str "@" forked-at)))))]
@@ -191,8 +202,8 @@
   "The editor row: prompt ⊕ buffer (newlines shown as ⏎) ⊕ cursor column
    (1-based terminal col for the caret). Buffer view slides when the caret
    would pass the right edge."
-  [{:keys [slug]} reg {:keys [buffer cursor]} w]
-  (let [depth  (count (get-in reg [slug :tape]))
+  [{:keys [slug]} index {:keys [buffer cursor]} w]
+  (let [depth  (get-in index [slug :depth] 0)
         prompt (str (name slug) "[" depth "]> ")
         pw     (cmp/display-width prompt)
         shown  (str/replace buffer "\n" "⏎")
@@ -214,18 +225,25 @@
 
 (defn frame
   "The WHOLE screen as one ANSI string ⊕ caret position — a pure function of
-   (registry-snapshot ⊕ ui-state ⊕ theme ⊕ term-w/h). Wide ≥70 cols: left
+   (index ⊕ focused tape ⊕ ui-state ⊕ theme ⊕ term-w/h). Wide ≥70 cols: left
    tree pane (the map you move on — tab walks DFS, the highlight follows) ⊕
    right tape pane (where you are). Narrow: single pane ⊕ sessions strip.
    The impl half (tui.term) only emits this; headless tests assert on it
-   directly."
-  [reg {:keys [slug scroll events pending input overlay] :as state} theme term-w term-h]
+   directly.
+
+   TWO arguments where there was one registry, because that is what the
+   screen actually is: `index` ≡ every session as edges ∧ counts (the tree,
+   the strip, the title's model), `tape` ≡ the message bodies of the FOCUSED
+   session ONLY. The wire sends exactly this pair, from one server-side read
+   (client/view). `tape` nil ≡ not fetched yet → `loading-lines`; `[]` ≡ open
+   with no turns → `welcome-lines`. Keeping the distinction is what stops a
+   Tab from painting the previous session's messages under the new title."
+  [index tape {:keys [slug scroll events pending input overlay] :as state} theme term-w term-h]
   (let [two?    (>= term-w two-pane-threshold)
         box-h   (max 4 (- term-h (if two? 1 2)))
         inner-h (- box-h 2)
         tree-w  (if two? tree-pane-w 0)
         tape-w  (- term-w tree-w)
-        tape    (get-in reg [slug :tape])
         {:keys [lines scroll scroll-used]}
         (if overlay
           ;; overlay {:title :lines} POPS OVER the right pane — chrome, never
@@ -237,8 +255,10 @@
             {:lines       (vec (take inner-h (drop sc ls)))
              :scroll      {:pos (min total (+ sc inner-h)) :total total}
              :scroll-used sc})
-          (let [tl (tape-lines tape (some? pending) theme (- tape-w 2))
-                tl (if (seq tl) tl (welcome-lines (- tape-w 2)))]
+          (let [tl (if (nil? tape)
+                     (loading-lines (- tape-w 2))
+                     (let [tl (tape-lines tape (some? pending) theme (- tape-w 2))]
+                       (if (seq tl) tl (welcome-lines (- tape-w 2)))))]
             (visible-window tl inner-h scroll)))
         buf     (StringBuilder.)]
     (when two?
@@ -252,7 +272,7 @@
                           (take-last 5 events))
             ev-h    (if (seq evs) (inc (count evs)) 0)
             tree-h  (max 1 (- inner-h ev-h))
-            tl      (tree-lines reg slug theme tree-iw)
+            tl      (tree-lines index slug theme tree-iw)
             ;; window the tree around the CURRENT node (the reverse-video line)
             ci      (max 0 (.indexOf ^java.util.List
                                      (mapv #(str/includes? % cmp/reverse-on-s) tl) true))
@@ -275,7 +295,7 @@
     (cmp/draw-box buf {:row 1 :col (inc tree-w) :w tape-w :h box-h
                        :title (if overlay
                                 (str "⧉ " (:title overlay) " — esc closes")
-                                (title-line state reg))
+                                (title-line state index))
                        :scroll scroll
                        :theme theme
                        :body-lines (vec lines)})
@@ -285,9 +305,9 @@
     ;; tree pane).
     (when-not two?
       (.append buf (cmp/move-to-s (inc box-h) 1))
-      (.append buf (sessions-line reg slug theme term-w)))
+      (.append buf (sessions-line index slug theme term-w)))
     (let [input-row (+ box-h (if two? 1 2))
-          il        (input-line state reg input term-w)]
+          il        (input-line state index input term-w)]
       (.append buf (cmp/move-to-s input-row 1))
       (.append buf (:text il))
       {:s           (str buf)

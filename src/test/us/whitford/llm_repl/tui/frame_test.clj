@@ -153,20 +153,25 @@
 
 ;; ── tree / order ────────────────────────────────────────────────────────────
 
-(def reg
-  {:scratch         {:slug :scratch :tape [{:role :user :text "hi"}
-                                           {:role :assistant :text "yo"}]
-                     :config {:model :m}}
-   :scratch-nucleus {:slug :scratch-nucleus :tape [] :config {:model :m}
+(def index
+  "What the wire now sends for EVERY session: edges ∧ counts, no message
+   bodies (registry/index's shape — the fixture is the payload, not a
+   registry map dressed up as one)."
+  {:scratch         {:slug :scratch :model :m :depth 2 :turns 1}
+   :scratch-nucleus {:slug :scratch-nucleus :model :m :depth 0 :turns 0
                      :forked-from :scratch :forked-at 2}
-   :zeta            {:slug :zeta :tape [] :config {:model :m}}})
+   :zeta            {:slug :zeta :model :m :depth 0 :turns 0}})
+
+(def tape
+  "…and the bodies of the FOCUSED session only."
+  [{:role :user :text "hi"} {:role :assistant :text "yo"}])
 
 (deftest dfs-order-walks-the-forest
-  (is (= [:scratch :scratch-nucleus :zeta] (frame/dfs-order reg)))
+  (is (= [:scratch :scratch-nucleus :zeta] (frame/dfs-order index)))
   (is (= [] (frame/dfs-order {}))))
 
 (deftest tree-lines-shape
-  (let [ls (frame/tree-lines reg :scratch th 24)]
+  (let [ls (frame/tree-lines index :scratch th 24)]
     (is (= 3 (count ls)))
     (is (str/includes? (first ls) cmp/reverse-on-s) "current highlighted")
     (is (str/includes? (first ls) "scratch·2"))
@@ -182,7 +187,7 @@
    :input  {:buffer "abc" :cursor 3 :history [] :hist-idx nil :paste? false}})
 
 (deftest wide-frame-snapshot
-  (let [{:keys [s cursor-row cursor-col scroll-used]} (frame/frame reg state th 100 30)]
+  (let [{:keys [s cursor-row cursor-col scroll-used]} (frame/frame index tape state th 100 30)]
     (is (str/includes? s "llm-repl · :scratch") "title carries the slug")
     (is (str/includes? s "tree") "tree pane present ≥70 cols")
     (is (str/includes? s "you ›") "user turn rendered")
@@ -194,19 +199,41 @@
     (is (zero? scroll-used))))
 
 (deftest narrow-frame-falls-back-to-sessions-strip
-  (let [{:keys [s]} (frame/frame reg state th 60 24)]
+  (let [{:keys [s]} (frame/frame index tape state th 60 24)]
     (is (str/includes? s "sessions:") "narrow ≡ single pane ⊕ strip")
     (is (not (str/includes? s "eval! :scratch ✓@2"))
         "narrow mode has NO event display (ratified: footer home ≡ tree pane)")))
 
 (deftest empty-tape-shows-welcome-hints
-  (let [reg' (assoc-in reg [:scratch :tape] [])
-        {:keys [s]} (frame/frame reg' state th 100 30)]
+  (let [{:keys [s]} (frame/frame (assoc-in index [:scratch :depth] 0) [] state th 100 30)]
     (is (str/includes? s "type to chat") "in-idiom banner while the tape is empty")))
+
+(deftest nil-tape-is-not-empty-tape
+  ;; [] ≡ an open session with no turns; nil ≡ we have not fetched this
+  ;; pane's tape YET (the round trip after a Tab). Rendering them the same
+  ;; would flash the welcome banner at a session with a long history — and
+  ;; keeping the LAST tape instead would paint another session's messages
+  ;; under this title, which is the bug this distinction exists to prevent.
+  (let [{loading :s} (frame/frame index nil state th 100 30)
+        {empty-s :s} (frame/frame index [] state th 100 30)
+        {full-s :s}  (frame/frame index tape state th 100 30)]
+    (testing "nil ≡ loading placeholder, no bodies, no banner"
+      (is (str/includes? loading "loading"))
+      (is (not (str/includes? loading "type to chat")))
+      (is (not (str/includes? loading "you ›")) "no messages — not even stale ones"))
+    (testing "[] ≡ the welcome banner, never the placeholder"
+      (is (str/includes? empty-s "type to chat"))
+      (is (not (str/includes? empty-s "loading"))))
+    (testing "a real tape renders bodies, and the title/depth come from the index"
+      (is (str/includes? full-s "you ›"))
+      (is (str/includes? full-s "scratch[2]> ") "depth ≡ the index's :depth"))
+    (testing "the chrome is identical whichever tape state we are in"
+      (is (str/includes? loading "llm-repl · :scratch"))
+      (is (str/includes? loading "scratch·2") "the tree still shows the index depth"))))
 
 (deftest overlay-pops-over-decorated-and-head-anchored
   (let [st (assoc state :overlay {:title "help" :lines (mapv str (range 50))} :scroll 5)
-        {:keys [s scroll-used]} (frame/frame reg st th 100 30)]
+        {:keys [s scroll-used]} (frame/frame index tape st th 100 30)]
     (is (str/includes? s "⧉ help — esc closes")
         "the frame decorates — callers pass a bare title")
     (is (str/includes? s "5") "head-anchored: scroll 5 ≡ line 5 at the top")
@@ -214,10 +241,10 @@
 
 (deftest overlay-scroll-clamps-to-document
   (let [st (assoc state :overlay {:title "t" :lines ["a" "b"]} :scroll 999)
-        {:keys [scroll-used]} (frame/frame reg st th 100 30)]
+        {:keys [scroll-used]} (frame/frame index tape st th 100 30)]
     (is (zero? scroll-used) "2 lines < pane height → nothing to scroll")))
 
 (deftest tape-scroll-clamps-and-reports
   (let [st (assoc state :scroll 9999)
-        {:keys [scroll-used]} (frame/frame reg st th 100 30)]
+        {:keys [scroll-used]} (frame/frame index tape st th 100 30)]
     (is (< scroll-used 9999) "the effective scroll comes back for state sync")))

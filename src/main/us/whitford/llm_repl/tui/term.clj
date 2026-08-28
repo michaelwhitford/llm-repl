@@ -66,12 +66,17 @@
     (let [w (max 40 (.getWidth terminal))
           h (max 8 (.getHeight terminal))
           s (swap! state assoc :term-w w :term-h h :render-dirty false)
-          ;; the events STREAM is referenced (like :registry), deref'd per
+          ;; the events STREAM is referenced (like :view), deref'd per
           ;; frame — `frame/frame` stays pure, headless tests pass :events
           ;; directly
           s (cond-> s
               (:events-ref s) (assoc :events (vec @(:events-ref s))))
-          {:keys [s cursor-row cursor-col scroll-used]} (frame/frame @(:registry s) s theme w h)]
+          ;; ONE deref of the view: index ∧ focused tape come from the same
+          ;; value, so a repaint can never catch the tree at version N and
+          ;; the tape pane at N−1 (client/view holds them in one atom for
+          ;; exactly this reason — split the payload, never the round-trip)
+          {:keys [index tape]} @(:view s)
+          {:keys [s cursor-row cursor-col scroll-used]} (frame/frame index tape s theme w h)]
       ;; sync state to the EFFECTIVE scroll — without this, scrolling past
       ;; either end inflates :scroll invisibly and the reverse direction eats
       ;; phantom distance before the view moves (human-found: arrow-up after
@@ -145,15 +150,23 @@
 
 (defn cycle-slug!
   "Point the TUI at the next session in DFS TREE order (wraps) — tab movement
-   tracks the tree pane's shape, so cycling FEELS like walking the tree."
-  [state]
-  (swap! state (fn [{:keys [registry slug] :as s}]
-                 (let [slugs (frame/dfs-order @registry)
-                       i     (.indexOf ^clojure.lang.PersistentVector slugs slug)
-                       slug' (if (seq slugs)
-                               (nth slugs (mod (inc i) (count slugs)))
-                               slug)]
-                   (assoc s :slug slug' :scroll 0 :render-dirty true)))))
+   tracks the tree pane's shape, so cycling FEELS like walking the tree.
+
+   `on-focus` ≡ (fn [slug]) — INJECTED (this ns stays core-free, same seam as
+   on-submit/on-help): the wire layer uses it to fetch the new pane's tape.
+   Until that lands the view holds no tape for this slug and the pane renders
+   the loading placeholder — never the session we just left."
+  [state on-focus]
+  (let [moved (volatile! nil)]
+    (swap! state (fn [{:keys [view slug] :as s}]
+                   (let [slugs (frame/dfs-order (:index @view))
+                         i     (.indexOf ^clojure.lang.PersistentVector slugs slug)
+                         slug' (if (seq slugs)
+                                 (nth slugs (mod (inc i) (count slugs)))
+                                 slug)]
+                     (vreset! moved slug')
+                     (assoc s :slug slug' :scroll 0 :render-dirty true))))
+    (when (and on-focus @moved) (on-focus @moved))))
 
 ;; ── input thread ──────────────────────────────────────────────────────────────
 
@@ -162,7 +175,7 @@
    Loop-level keys (session/viewport/quit) here; editing keys →
    frame/edit-step. `on-submit` ≡ (fn [text]) — the wire layer decides chat
    vs form."
-  [{:keys [^Terminal terminal state on-submit on-help] :as h}]
+  [{:keys [^Terminal terminal state on-submit on-help] :as h}]  ; ⊕ :on-focus
   (.enterRawMode terminal)
   (let [rdr   ^NonBlockingReader (.reader terminal)
         read! (fn [t] (if (pos? ^long t) (.read rdr (long t)) (.read rdr)))
@@ -187,7 +200,7 @@
                (not (get-in @state [:input :paste?])))
           (on-help)
 
-          (= k :tab)  (cycle-slug! state)
+          (= k :tab)  (cycle-slug! state (:on-focus h))
           (= k :pgup) (scroll-view! state :up (page))
           (= k :pgdn) (scroll-view! state :down (page))
 
@@ -212,13 +225,16 @@
 (defn start!
   "Boot the TUI: alt screen, bracketed paste, render ticker. Returns the
    handle {:state :terminal :lock :theme :stopped?} the input loop and the
-   wire layer drive. `registry` ≡ the client's registry deref-able,
+   wire layer drive. `view` ≡ the client's view deref-able
+   ({:index :slug :tape} — every session as counts ⊕ the focused tape),
    `events` ≡ the client's events deref-able (BOTH referenced, not copied —
    the frame reads them live; every client's receipts show, not just this
-   surface's). Caller must check interactive-terminal? first."
-  [{:keys [registry events slug nrepl-port on-stop on-submit on-help]}]
+   surface's). `on-focus` ≡ (fn [slug]) fired when Tab moves the pane, so the
+   wire layer can fetch the new tape. Caller must check interactive-terminal?
+   first."
+  [{:keys [view events slug nrepl-port on-stop on-submit on-help on-focus]}]
   (let [terminal (-> (TerminalBuilder/builder) (.system true) (.build))
-        state    (atom {:registry     registry
+        state    (atom {:view         view
                         :events-ref   events
                         :slug         slug
                         :nrepl-port   nrepl-port
@@ -236,7 +252,8 @@
                   :stopped?  (atom false)
                   :on-stop   on-stop
                   :on-submit on-submit
-                  :on-help   on-help}]
+                  :on-help   on-help
+                  :on-focus  on-focus}]
     (emit! (str alt-screen-on-s clear-screen-s hide-cursor-s paste-on-s))
     (render-frame! h)
     (start-ticker! h)

@@ -158,13 +158,16 @@
 
 (defn- do-use!
   "Handle (use! slug [opts]) LOCALLY: ensure the session exists on the core
-   (local or remote), then move THIS surface's focus. Args are literals."
+   (local or remote), then move THIS surface's focus — which means telling
+   the CLIENT too (`focus!`), so the view starts carrying this session's tape
+   instead of the one we just left. Args are literals."
   [client state text]
   (future
     (try
       (let [[_ slug opts] (read-string text)]
         (client/ensure! client slug (or opts {}))
         (reset! current* slug)
+        (client/focus! client slug)
         (swap! state assoc :slug slug :scroll 0 :render-dirty true)
         (core/event! (str "use! " slug)))
       (catch Throwable t (core/event! (str "error: " (ex-message t)))))))
@@ -225,15 +228,19 @@
           (swap! state assoc :pending nil :render-dirty true))))))
 
 (defn run-tui
-  "Boot the TUI over the CLIENT's registry/events deref-ables and BLOCK until
-   it stops. The client's notify! is the multi-client moment: local ≡
-   add-watch on sessions*/events*, remote ≡ a poll thread against the
-   container — either way a change flips the dirty flag and the ticker
-   repaints within ~33ms. The frame never knows which; :registry is just a
-   deref-able (core's atom, or a cache atom kept fresh over the wire)."
+  "Boot the TUI over the CLIENT's view/events deref-ables and BLOCK until it
+   stops. The client's notify! is the multi-client moment: a change flips the
+   dirty flag and the ticker repaints within ~33ms. The frame never knows
+   what is behind it; :view is just a deref-able holding {:index :slug :tape}
+   kept fresh over the wire.
+
+   `focus!` FIRST, before the alt screen: it is what puts a tape in the view
+   at all (the primed view is index-only), so the very first frame shows this
+   session's messages rather than the loading placeholder."
   [client nrepl-port]
+  (client/focus! client @current*)
   (let [h* (promise)
-        h  (tui/start! {:registry   (client/registry client)
+        h  (tui/start! {:view       (client/view client)
                         :events     (client/events client)
                         :slug       @current*
                         :nrepl-port nrepl-port
@@ -241,6 +248,13 @@
                         ;; start!, before we hold h — close over the promise
                         :on-submit  (fn [text] (tui-submit! client @h* text))
                         :on-help    (fn [] (show-help! client @h*))
+                        ;; Tab moved the pane: fetch that tape. On a WORKER —
+                        ;; the input thread must never block on the wire, and
+                        ;; focus! blocks by contract (its own socket, so it
+                        ;; answers even mid-completion).
+                        :on-focus   (fn [slug]
+                                      (reset! current* slug)
+                                      (future (client/focus! client slug)))
                         :on-stop    (fn [] (client/shutdown! client))})]
     (deliver h* h)
     (reset! tui* h)
@@ -289,7 +303,7 @@
                             (println (str "llm-repl — could not attach to " host ":" port
                                           " (" (.getMessage e) ")"))
                             (System/exit 1)))]
-        (reset! current* (or (some-> (client/registry client) deref keys first) :scratch))
+        (reset! current* (or (some-> (client/view client) deref :index keys first) :scratch))
         (println (str "llm-repl — attached to " host ":" port))
         (run-tui client port)))))
 
@@ -326,7 +340,7 @@
     (let [pdir        (daemon/project-dir)
           [st fresh?] (daemon/ensure! pdir)
           client      (client/remote "127.0.0.1" (:port st))]
-      (reset! current* (or (some-> (client/registry client) deref keys first) :scratch))
+      (reset! current* (or (some-> (client/view client) deref :index keys first) :scratch))
       (println (str "llm-repl — attached to local repl (pid " (:pid st) " port " (:port st) ")"
                     (when fresh? " [spawned]") " — `bb stop` to shut it down"))
       (run-tui client (:port st)))
