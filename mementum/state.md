@@ -48,14 +48,17 @@ version*-gated registry fetch (version-poll fallback), attach-loss
 fail-loud (status deref → :lost → TUI teardown+exit; live-verified,
 closes tui-dead-daemon-silent), structural suppress-echo (regex dead),
 poll-cycle! ≡ injectable-fetch test seam. Twin caught 2 latent JVM breaks
-@ net.clj first-load (memories/twin-first-load-latent-breaks). Suite: 104
-tests / 285 assertions, both runtimes. compact-live-trial UNBLOCKED;
-attach matrix fully human-verified (✅ tui-local-daemon-human-pass).
+@ net.clj first-load (memories/twin-first-load-latent-breaks);
+(6) `f8450fb` `tui.frame`/`tui.term` — testable cut ≡ file topology (D5),
+frame pure (loads terminal-free), headless suite D6 named finally exists,
+D5 naming lock ≡ short-name ∘ variant-slug round-trip test (frame encodes
+the inverse, no api require). Suite: 119 tests / 365 assertions, both
+runtimes. compact-live-trial UNBLOCKED; attach matrix fully human-verified.
 
-**Next pickup: refactor step 6 — `tui.frame`/`tui.term` split.**
-Pure frame ⊕ terminal io split, headless frame tests, `main` rewire
-(tui.frame consumes variant-slug from step 4). Full order in architecture
-§ refactor order.
+**Next pickup: refactor step 7 — `daemon` JVM fail-loud ⊕ `roster` D7.**
+JVM spawn! fails loud with instructions (no babashka.config property);
+roster: default-config as fn, dynamic config/real reload-config!. Full
+order in architecture § refactor order.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -76,4 +79,4 @@ Pure frame ⊕ terminal io split, headless frame tests, `main` rewire
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-In progress: ▶ v030-refactor — steps 1–5 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8, 75df5a0); next ≡ step 6 (tui.frame/tui.term split, headless tests, main rewire). compact-live-trial unblocked.
+In progress: ▶ v030-refactor — steps 1–6 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8, 75df5a0, f8450fb); next ≡ step 7 (daemon JVM fail-loud, roster D7 dynamic config/reload). compact-live-trial unblocked.
