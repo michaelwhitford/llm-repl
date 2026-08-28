@@ -24,6 +24,12 @@ related: [design/architecture, design/library-contract, upstream/escapement]
    invisible from inside; on disk, `tape ∖ trace ≡ undeclared edits`.
    Every legitimate assistant turn has a captured generation behind it;
    silence in the trace is the tell. Audit surface, not restriction.
+   External evidence (2026-08-28, memories/dialect-detection-is-the-null-
+   trace): louisabraham.github.io/load-bearing measures Claude's dialect at
+   ~37% of human-attributed GitHub PRs — with no trace layer, provenance
+   degrades to stylometry: aggregate-only, never per-document, and unable
+   to tell laundering from genuine absorption. Traces make provenance a
+   lookup, not an inference.
 3. **NEW — confabulation audit** — compact-validation's verdict: over-
    compaction confabulates FLUENTLY, never reports absence. Arm-diff needs
    ground truth that outlives the daemon; `:original` on the tape dies with
