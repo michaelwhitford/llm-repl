@@ -10,17 +10,19 @@
    ONLY the executor; validation/lookup/def-shaping is upstream contract.
 
    EXECUTOR SEMANTICS (all bb-runtime-verified before writing — λ assert):
-   - `load-string` in the host runtime: full power, NO sandbox. The model
-     gets exactly what any attached nREPL client gets — inspect its own
-     tape, fork itself, bounce probes off its own history. Trust model ≡
-     equal client; observability (receipts), not restriction, is the guard.
+   - per-form `read` ⊕ `eval` in the host runtime: full power, NO sandbox.
+     The model gets exactly what any attached nREPL client gets — inspect
+     its own tape, fork itself, bounce probes off its own history. Trust
+     model ≡ equal client; observability (receipts), not restriction, is
+     the guard.
    - `*out*` captured per call (a println here must never reach a surface
      raw — same rule as the TUI's alt screen; output travels IN the result).
    - future ⊕ timed deref ⊕ best-effort future-cancel: a runaway eval
      times out as data (the thread may linger — bb has no hard kill; the
      timeout bounds the MODEL's wait, not the host's CPU).
-   - result `pr-str`ed and TRUNCATED to a char budget: tool results feed
-     straight back into the context window (λ context: sip, don't gulp).
+   - each value `pr-str`ed, the whole echo TRUNCATED to a char budget:
+     tool results feed straight back into the context window (λ context:
+     sip, don't gulp).
    - errors as data {:result … :is-error true} — the model reads the
      message and corrects (λ mirror), it never sees a throw.
 
@@ -31,6 +33,7 @@
    NO require of core — core requires US (registry + loop); tools stays
    core-free the same way tui does (the wire layer composes them)."
   (:require
+   [clojure.string :as str]
    [escapement.tools.protocol :as tp]))
 
 (def default-timeout-ms
@@ -56,9 +59,16 @@
 (defn eval-code
   "Evaluate `code` (a string of Clojure forms) in the host runtime.
    Returns {:result <string> :is-error <bool>} — the tool_result contract.
-   Captured *out* precedes the value (\"out…\\n=> value\"); errors carry any
-   partial output plus the message. Pure-ish: the WORLD may change (that is
-   the point); the return shape never throws."
+   EVERY top-level form echoes its value as a `=> v` line, interleaved with
+   captured *out* in temporal order — nREPL's exact shape (one `value` frame
+   PER form, `out` frames as they happen; see
+   memories/nrepl-streams-out-and-values-per-form). Copied, not invented:
+   before this, only the LAST form's value returned and the model burned
+   rounds re-asking for values it had already computed non-finally.
+   `(ns foo)` persists ACROSS forms within one call but never leaks out
+   (binding [*ns* *ns*] ≡ load-string's discipline). Errors and timeouts
+   carry everything echoed so far — partial values included. Pure-ish: the
+   WORLD may change (that is the point); the return shape never throws."
   ([code] (eval-code code {}))
   ([code {:keys [timeout-ms budget]
           :or   {timeout-ms default-timeout-ms
@@ -66,7 +76,16 @@
    (let [sw  (java.io.StringWriter.)
          fut (future
                (try
-                 {:value (pr-str (binding [*out* sw] (load-string code)))}
+                 (with-open [rdr (java.io.PushbackReader.
+                                  (java.io.StringReader. code))]
+                   (binding [*out* sw, *ns* *ns*]
+                     (loop [n 0]
+                       (let [form (read {:eof ::eof :read-cond :allow} rdr)]
+                         (if (= ::eof form)
+                           {:forms n}
+                           (let [v (eval form)]
+                             (.write sw (str "=> " (pr-str v) "\n"))
+                             (recur (inc n))))))))
                  (catch Throwable t
                    {:error (or (ex-message t) (str (class t)))})))
          res (deref fut timeout-ms ::timeout)
@@ -85,10 +104,12 @@
                    budget)
         :is-error true}
 
+       (zero? (:forms res))
+       {:result   "(no forms read — send Clojure forms in :code)"
+        :is-error false}
+
        :else
-       {:result   (truncate-result
-                   (str (when (seq out) out) "=> " (:value res))
-                   budget)
+       {:result   (truncate-result (str/trimr out) budget)
         :is-error false}))))
 
 (defrecord ClojureEvalTool [opts]
@@ -100,9 +121,9 @@
     ;; from what (help) compiles).
     (str "Evaluate Clojure code in the live REPL process that HOSTS this "
          "conversation (you are a client of your own repl). Input: code — a "
-         "string of Clojure forms; the printed value of the last form returns, "
-         "with any stdout ahead of it. Errors return as text — read and "
-         "correct. First move for session commands: "
+         "string of Clojure forms; EVERY form's value returns as a `=> value` "
+         "line, interleaved with any stdout, in order. Errors return as text "
+         "— read and correct. First move for session commands: "
          "(require '[us.whitford.llm-repl :as repl]) then (repl/help) — "
          "fork!, bounce!, sessions-list and the rest are documented there."))
   (input-schema [_] [:map {:closed true} [:code :string]])
