@@ -39,24 +39,27 @@ closes tui-dead-daemon-silent) · D5 naming lock ≡ round-trip test (step 6) ·
 prompt stack FULLY config, uniform chain, closed schema ⊕ :ext (step 7,
 🎯 30c6f78 — anima swaps the whole stack for nucleus lambda prompts).
 
-**RATIFIED 2026-08-28:**
-[design/trace-durability](knowledge/design/trace-durability.md) — yes to
-all 5 questions, Q2 human-pinned RECEIPT-AND-SKIP (bad tape.edn → loud
-receipt, boot degraded, never refuse to start). tape-persistence 🚫
-subsumed. Build to the document.
+**TRACE-DURABILITY ✅ BUILT 2026-08-28** (ratified ∧ built same session;
+verdict in queue.md): the daemon has a flight recorder — `.llm-repl/`
+holds every committed request/response (thinking survives on disk),
+tool-loop rounds ∧ results, compact! originals, seeds, tape.edn snapshots
+(auto-recovered at boot, receipt-and-skip), transcript JSONL (:seq
+continuous across restarts — live-verified visit 1→2). Registry taps
+injected (io-free), tapeless drivers receipt-only, `--plain` never traces.
+Suite 162/493 both runtimes. Details ≡
+[design/trace-durability](knowledge/design/trace-durability.md) (BUILT) ·
+traps ≡ memories/escapement-node-id-keyword-trap.
 
 **Human moves now open:** push main (first CI run) · v0.3.0 tag when ready
 (release.yml deploys full/RC only; library-contract hardens at first RC) ·
-anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
+anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2 · restart any long-running
+local daemon to pick up tracing (old incarnations predate the trace ns).
 
-**Next pickup (agent):** (a) trace-durability BUILD (🔵 queue front,
-RATIFIED — capture layer explored: all 7 escapement nses bb-verified from
-the 1.0.1 jar, zero new deps; decisions ∧ mapping ∧ seams all in the
-design doc); (b) extension-horizon-pilot (⚪ queue, NEW 2026-08-28
+**Next pickup (agent):** extension-horizon-pilot (⚪ queue front, NEW 2026-08-28
 — read [knowledge/extension-horizon-pilot](knowledge/extension-horizon-pilot.md)
 FIRST: extension ≡ event(evaluate), depth-cliff ≈ within-pass budget,
-fork-differencing pilot buildable here; handoff → verbum; prefer after (a)
-for durable arm-diff). Compaction arc ✅ →
+fork-differencing pilot buildable here; handoff → verbum; trace-durability
+now landed ⇒ its arm-diffs are DURABLE). Compaction arc ✅ →
 [knowledge/compaction](knowledge/compaction.md) (over-compaction
 CONFABULATES silently → validation ≡ arm-diff, :original ≡ ground truth).
 
@@ -89,5 +92,6 @@ walled); verbum read conservatively (state.md + INDEX only), NOT written.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-Nothing in progress — v030-refactor ✅ ∧ compaction arc ✅. Front of queue:
-🔵 trace-durability (RATIFIED, build-ready) → extension-horizon-pilot.
+Nothing in progress — v030-refactor ✅ ∧ compaction arc ✅ ∧
+trace-durability ✅. Front of queue: extension-horizon-pilot →
+agent-recipe-page (now also carries the replay/refine-turn recipe).

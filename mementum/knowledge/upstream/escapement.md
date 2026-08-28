@@ -103,6 +103,11 @@ c304c98 — no upstream release needed). Design intent lives in escapement's
   snippet ≡ ≤80ch human-correlation slice; the event carries the ref, the blob the weight
   encode-node-id: :a/b → "a_b" — NOT perfectly reversible; authoritative coords
                   ride the transcript event, not the path
+  ⚠ TRAPS (runtime-pinned 2026-08-28, memories/escapement-node-id-keyword-trap):
+    node-id must be a KEYWORD — a string silently loses its first char
+    ("ouro" → nodes/uro/…); kind is a STRING ("response", not :response);
+    capture-blob! OVERWRITES (only capture-request! is first-write-wins) —
+    multi-round captures need distinct kinds or they eat each other
 
 λ(transcript). escapement.transcript — CLJ, daemon-side: single-writer JSONL.
   ∀threads → LinkedBlockingQueue → ONE daemon writer thread owns the BufferedWriter

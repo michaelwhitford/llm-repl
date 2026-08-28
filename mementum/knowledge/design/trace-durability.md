@@ -1,7 +1,7 @@
 ---
 type: Architecture
 title: Trace durability ⊕ tape persistence — one seam on escapement's capture layer
-status: RATIFIED 2026-08-28 — all 5 open questions decided (see § Ratified decisions)
+status: BUILT 2026-08-28 (same day as ratification) — verified by trace_test.clj (15 tests incl. disk twin), capture tests in completion_test/llm_repl_test, and a LIVE two-incarnation restart (visit 1→2, :recover receipt, transcript :seq continuous)
 related: [design/architecture, design/library-contract, upstream/escapement]
 ---
 
