@@ -89,6 +89,16 @@
  ;; same tape both ways and compare.
  ;; :tools true
 
+ ;; Trace durability — the daemon's flight recorder (./.llm-repl/).
+ ;; Every committed completion's full request/response, tool results,
+ ;; compact! originals, a transcript of every receipt, and a tape snapshot
+ ;; per session — so tapes SURVIVE daemon/container restarts (auto-recovered
+ ;; at boot, loudly) and every assistant turn has its generation on disk.
+ ;; ON by default for the daemon; --plain (the debug hatch) never traces.
+ ;; The dir self-writes a .gitignore: captured requests carry the resolved
+ ;; preamble, so traces must never reach a repo.
+ ;; :trace {:enabled? true :dir ".llm-repl"}
+
  ;; nREPL attach port. 0 picks a free port. Either way the chosen port is
  ;; written to .nrepl-port so editors and clients can auto-connect.
  ;; :bind (default "127.0.0.1") is the listen address. "0.0.0.0" opens the

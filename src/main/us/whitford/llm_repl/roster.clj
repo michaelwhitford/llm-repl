@@ -83,6 +83,9 @@
    [:nrepl         {:optional true} [:map
                                      [:port {:optional true} :int]
                                      [:bind {:optional true} :string]]]
+   [:trace         {:optional true} [:map
+                                     [:enabled? {:optional true} :boolean]
+                                     [:dir      {:optional true} :string]]]
    [:attach        {:optional true} [:or :string :boolean
                                      [:map
                                       [:host {:optional true} :string]

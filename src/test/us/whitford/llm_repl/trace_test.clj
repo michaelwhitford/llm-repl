@@ -6,6 +6,7 @@
    test lives with the daemon wiring)."
   (:require
    [clojure.edn :as edn]
+   [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest testing is use-fixtures]]
    [escapement.protocols :as eproto]
@@ -209,6 +210,60 @@
     (testing "recovery's own mutate! re-snapshots under the CURRENT visit —
               each incarnation's tape.edn shows its own state"
       (is (some? (read-edn store "nodes/s/2/tape.edn"))))))
+
+;; ── disk round-trip (the ONE filesystem test — bb ∧ JVM twin) ─────────────
+
+(defn- rm-rf! [f]
+  (doseq [^java.io.File x (reverse (file-seq (io/file f)))]
+    (.delete x)))
+
+(deftest disk-round-trip-two-incarnations-test
+  (let [tmp (str (System/getProperty "java.io.tmpdir")
+                 "/llm-repl-trace-test-" (System/currentTimeMillis))]
+    (try
+      ;; ── incarnation 1: init, work, die ──
+      (trace/init! {:trace {:dir tmp}})
+      (is (trace/enabled?))
+      (testing "the licensing belt: .gitignore self-written at the work-dir"
+        (is (= "*\n" (slurp (io/file tmp ".gitignore")))))
+      (registry/mutate! #(assoc % :s {:slug :s
+                                      :tape [{:role :user :text "hi"}
+                                             {:role :assistant :text "yo"}]
+                                      :config {:model :m} :turns 1}))
+      (trace/capture! :s 1 "response"
+                      {:content [{:type :text :text "yo"}]} "yo")
+      (registry/event! {:kind :eval! :slug :s :msg "✓@2"})
+      (trace/close!)
+      (testing "blobs ∧ snapshot ∧ transcript are real files (atomic writes
+                landed; the tree is literally walkable)"
+        (is (.exists (io/file tmp "main" "nodes" "s" "1" "turns" "1" "response.edn")))
+        (is (.exists (io/file tmp "main" "nodes" "s" "1" "tape.edn")))
+        (is (pos? (count (str/split-lines
+                          (slurp (io/file tmp "main" "transcript.jsonl")))))))
+
+      ;; ── incarnation 2: reboot over the same dir ──
+      (reset! registry/sessions* {})
+      (trace/init! {:trace {:dir tmp}})
+      (testing "visit seeded max+1 — a restart never overwrites prior traces"
+        (is (= "nodes/s/2/turns/9/response.edn" (trace/ref-for :s 9 "response"))))
+      (trace/recover!)
+      (testing "the session came back whole — tape ⊕ config, immediately
+                eval!-able (configuration-completeness)"
+        (let [s (get @registry/sessions* :s)]
+          (is (= 2 (count (:tape s))))
+          (is (= {:model :m} (:config s)))
+          (is (= "yo" (get-in s [:tape 1 :text])))))
+      (testing "recovery was loud"
+        (is (some #(and (= :recover (:kind %)) (= :s (:slug %)))
+                  @registry/events*)))
+      (finally
+        (trace/close!)
+        (rm-rf! tmp)))))
+
+(deftest init-disabled-by-config-test
+  (trace/init! {:trace {:enabled? false :dir "/nonexistent/never-created"}})
+  (is (not (trace/enabled?)))
+  (is (not (.exists (io/file "/nonexistent/never-created")))))
 
 ;; ── close! ────────────────────────────────────────────────────────────────
 

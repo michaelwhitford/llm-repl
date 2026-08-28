@@ -25,6 +25,7 @@
    ;; main's own code (reads qualified) — full short-name rewire is step 6.
    [us.whitford.llm-repl :as core :refer :all]
    [us.whitford.llm-repl.roster :as roster]
+   [us.whitford.llm-repl.trace :as trace]
    [us.whitford.llm-repl.tui.term :as tui]))
 
 (defonce ^{:doc "The prompt loop's current session slug — loop-local UI state,
@@ -297,8 +298,17 @@
    DAEMON body (also what `bb nrepl` and the container run): start nREPL, open
    scratch, park forever. :plain ≡ a bootstrap line loop driving the in-process
    core (debug/no-TTY). The TUI NEVER runs here — it always ATTACHES (local
-   daemon or container), so there is no in-process TUI+core path left."
+   daemon or container), so there is no in-process TUI+core path left.
+
+   Trace durability rides the DAEMON BODY only (ratified Q1/Q2): :headless
+   inits the trace (config :trace, default ON) and auto-recovers persisted
+   tapes BEFORE any session opens — recovered :scratch must win over a
+   fresh one (open! is get-or-create, so order is the whole guarantee).
+   :plain — the labeled debug hatch — NEVER inits: no persistence surprise."
   [mode]
+  (when (= mode :headless)
+    (trace/init! (roster/config))
+    (trace/recover!))
   (let [port (start-nrepl!)]
     (core/open! @current*)
     (case mode
