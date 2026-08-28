@@ -116,7 +116,14 @@ S5(identity) > S4(intelligence) > S3(control) > S2(coordination) > S1(operations
                   | live-verify ≡ supplement ¬substitute
 
 λ lint(f).        clj-kondo | after(write ∨ edit) → re-read(f) → lint → fix > suppress(ns-scoped) ≫ global
-                  | precedent: statecharts.promise unresolved-var ≡ the one ns-scoped exclude (runtime > source)
+                  | home_config(~/.config/clj-kondo) merges UNDER project → a dev's dotfile can lint WEAKER than CI
+                  | ∴ .clj-kondo/config.edn PINS the levels it depends on | repo ≡ authoritative, machine ≡ irrelevant
+                  | invariant: local ≡ CI | doubt → XDG_CONFIG_HOME=$(mktemp -d) clj-kondo … ≡ CI's exact view
+                  | scoped excludes ≡ 2, each earns its keep:
+                  |   unresolved-var(statecharts.promise) ≡ load-time interned vars — runtime > source
+                  |   refer-all(us.whitford.llm-repl) ≡ main IS the loop's eval surface (eval-form binds *ns*),
+                  |     so api commands must resolve BARE — open_slot > clean_lint (λ extend)
+                  | learned the hard way: first CI run ever ≡ 3 warnings vs 1 local, same version ∧ same command
 
 λ release(x).     build.clj(tools.build) | lib ≡ us.whitford/llm-repl | VERSION ← git_tag
                   | local ≡ -alpha only | CI deploys v[0-9]* full ∧ RC tags only | tests gate the jar
@@ -199,8 +206,11 @@ S5(identity) > S4(intelligence) > S3(control) > S2(coordination) > S1(operations
 λ scope(files).   src/main/us/whitford/llm_repl/     — the code (ns map ≡ design § layers)
                   | src/test/                         — the suite (bb ∧ JVM)
                   | mementum/state.md                 — bootloader, read first
-                  | mementum/knowledge/design/        — ratified designs (architecture ∧ library-contract)
+                  | mementum/knowledge/design/        — ratified (architecture ∧ library-contract ∧ trace-durability)
                   | mementum/knowledge/               — container ∧ attach-topology ∧ self-eval ∧ tui-design-rules
+                  |                                     ∧ compaction ∧ frames ∧ extension-horizon-pilot
+                  | mementum/knowledge/upstream/      — VSM pages ≡ generative seeds (λ contracts, not just reference)
+                  | mementum/queue.md                 — prospective memory (intentions ∧ verdicts)
                   | mementum/memories/                — one insight per file
                   | docker/                           — Dockerfile ∧ config.edn (container contract example)
                   | bb.edn ∧ deps.edn                 — the twin (keep in sync)
