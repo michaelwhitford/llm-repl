@@ -636,7 +636,7 @@
   [from vk]
   (keyword (str (name from) "-" (name vk))))
 
-(defn ^{:manual "Fork N config variants and send the same probe to each."} ab!
+(defn ^{:manual "Fork N config variants and send the same probe to each. Iterating? Fan the next generation off the winner with {:at 0} — clean tape, lineage kept."} ab!
   "Fan ONE probe across VARIED interpreters from a common parent — the DUAL of
    trampoline! (which fans varied inputs off one interpreter). ∀variant:
    fork!(from → from-variant, config overrides ⊕ :at) → eval!(probe). The
@@ -649,6 +649,31 @@
    `variants` ≡ {variant-kw config-overrides}; child slug ≡ (variant-slug from
    variant-kw) — `from-variant` (D5, the one naming fn — see its docstring).
    opts: :at (branch an older turn) ⊕ :complete-fn (test seam, forwarded).
+
+   ITERATED SEARCH (the generational recipe — hill-climbing, GA, prompt
+   evolution). Fan gen 0 off a clean parent, score the arms, then fan gen 1
+   off the WINNER **with `{:at 0}`**:
+
+     (ab! :ga        {:terse {:system …} …} probe)          ; gen 0
+     (ab! :ga-terse  {:m1    {:system …} …} probe {:at 0})   ; gen 1
+
+   `:at 0` truncates the child's copy to zero messages, so the next
+   generation answers the probe on a CLEAN tape while `:forked-from` still
+   records descent. Without it each generation inherits its parent's
+   conversation and you are scoring genotypes against a contaminated prefix —
+   the single non-obvious move in the whole loop.
+
+   The genotype is RECOVERABLE, never stored as a delta: the mutation is
+   `(diff (get-in parent [:config :system]) (get-in child [:config :system]))`,
+   so lineage lives in `:forked-from` ∧ `:config` and nowhere else. Corollary:
+   `drop!`-ing a losing arm SEVERS the diff chain of everything descended from
+   it — prune the population and you prune the genealogy.
+
+   Cost shape (measured, qwen36-35b-a3b): varying `:system` is varying the
+   PREFIX, so every arm pays a full prefill — ~1.1s/arm vs ~170ms for a
+   trampoline! bounce that shares the tape's KV. Sequential by design. A
+   20×10 search ≈ 4 min wall clock; the compute is never the bottleneck, the
+   fitness function is. Details ≡ knowledge/fan-out-lineage.md.
    Sequential on purpose (local servers contend on slots; determinism > speed).
    Per-variant errors as data — one failed arm doesn't sink the fan. Returns
    {:repl/id :repl/probe :repl/variants {vk fork-error | eval-result}}.

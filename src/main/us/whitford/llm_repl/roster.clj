@@ -57,7 +57,11 @@
                        "of that repl — (repl/snapshot {slug}) returns this very "
                        "conversation. To inspect or drive the repl itself: "
                        "(require '[us.whitford.llm-repl :as repl]) then (repl/help) "
-                       "lists the session commands — sessions, tapes, forks.")
+                       "lists the session commands — sessions, tapes, forks, and "
+                       "N-arm counterfactual fans. (help) is a summary line per "
+                       "command; before you drive one, read its full contract with "
+                       "(:doc (meta #'repl/CMD)) — the options that matter are "
+                       "documented there, not here.")
    :nrepl         {:port 0 :bind "127.0.0.1"}})
 
 ;; ── config schema (D7: formal, closed ⊕ :ext) ─────────────────────────────────

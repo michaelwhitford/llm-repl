@@ -39,7 +39,8 @@ is real: two green runs — twin suite ∧ kondo ∧ schema validation on ubuntu
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
-tui-design-rules ∧ compaction ∧ frames ∧ upstream/escapement. Traps ≡
+tui-design-rules ∧ compaction ∧ frames ∧ fan-out-lineage ∧
+upstream/escapement. Traps ≡
 `memories/` (20 pages, one insight each —
 `git grep -- mementum/` before re-deriving; recall > re-derivation).
 
