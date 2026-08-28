@@ -84,7 +84,8 @@
    [us.whitford.llm-repl.completion :as completion]
    [us.whitford.llm-repl.registry :as registry]
    [us.whitford.llm-repl.roster :as llm]
-   [us.whitford.llm-repl.tape :as tape]))
+   [us.whitford.llm-repl.tape :as tape]
+   [us.whitford.llm-repl.trace :as trace]))
 
 ;; ── event! stays public (library-contract § 1 lists it); the sessions*/
 ;;    events* DELEGATING defs that used to live here are RETIRED
@@ -173,7 +174,11 @@
                                         :created-at (System/currentTimeMillis)})))
          [old new] (registry/mutate! f)]
      (when-not (contains? old slug)
-       (event! {:kind :open! :slug slug}))
+       (event! {:kind :open! :slug slug})
+       ;; trace: the replayable seed — config ⊕ birth metadata at
+       ;; nodes/<slug>/<visit>/seed.edn (creation only; a config-merge
+       ;; re-open! shows up in the tape.edn snapshot instead)
+       (trace/seed! slug (select-keys (get new slug) [:slug :config :created-at])))
      (get new slug))))
 
 (defn ^{:manual "The full session map — tape included."} snapshot
@@ -317,6 +322,10 @@
 
            (:compacted? new-msg)
            (let [saved (- (count (:original new-msg)) (count (:text new-msg)))]
+             ;; trace: the durable twin of :original (ratified Q4) — the
+             ;; on-tape copy dies with the registry; this blob is the
+             ;; arm-diff ground truth against silent confabulation
+             (trace/capture! slug i "original" old-msg (:original new-msg))
              (event! {:kind :compact! :slug slug :msg (str "@" i " −" saved "ch")})
              {:repl/id     slug
               :repl/index  i
@@ -405,7 +414,13 @@
                  (when (not= (:tape (get old slug)) snapshot)
                    (event! {:kind :raced :slug slug
                             :msg  "reply answered a stale prefix — appended, not clobbered"}))
-                 (event! {:kind :eval! :slug slug :msg (str "✓@" (count tape'))})
+                 ;; :io/ref rides ✓ only when OUR completion path captured
+                 ;; (an injected :complete-fn bypasses the capture seam — a
+                 ;; ref to a blob that never landed would be a lie). Turn ≡
+                 ;; (count snapshot): the index the capture used, race-exact.
+                 (event! (cond-> {:kind :eval! :slug slug :msg (str "✓@" (count tape'))}
+                           (and (trace/capturing?) (nil? (:complete-fn opts)))
+                           (assoc :io/ref (trace/ref-for slug (count snapshot) "response"))))
                  {:repl/id    slug
                   :repl/reply (:text (last tape'))
                   :repl/depth (count tape')
@@ -483,7 +498,11 @@
          step     (eval-rf {:complete complete})]
      (event! {:kind :bounce! :slug slug :msg "…"})
      (try
-       (let [out (bounce-output step (:tape sess) text)]
+       ;; tapeless: no assistant tape index exists for this send — N bounces
+       ;; off one prefix would collide on the same turn number. Receipt-only
+       ;; (human-decided, design § build decisions 1).
+       (let [out (binding [trace/*capture?* false]
+                   (bounce-output step (:tape sess) text))]
          (event! {:kind :bounce! :slug slug :msg "✓"})
          {:repl/id     slug
           :repl/input  text
@@ -510,11 +529,13 @@
          complete ((get opts :complete-fn completion/default-complete) (:config sess) slug)
          step     (eval-rf {:complete complete})
          _        (event! {:kind :tramp! :slug slug :msg (str (count inputs) "…")})
-         bounces  (mapv (fn [input]
-                          (try {:input input :output (bounce-output step prefix input)}
-                               (catch Throwable t
-                                 {:input input :error (str "send failed: " (ex-message t))})))
-                        (vec inputs))
+         ;; tapeless — receipt-only, same as bounce! (see its comment)
+         bounces  (binding [trace/*capture?* false]
+                    (mapv (fn [input]
+                            (try {:input input :output (bounce-output step prefix input)}
+                                 (catch Throwable t
+                                   {:input input :error (str "send failed: " (ex-message t))})))
+                          (vec inputs)))
          errs     (count (filter :error bounces))]
      (event! {:kind :tramp! :slug slug
               :msg  (str (- (count bounces) errs) "✓" (when (pos? errs) (str " " errs "✗")))})

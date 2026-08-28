@@ -9,16 +9,20 @@
    through (verified: `(p/await! 42)` → `42`), so `send-turn` can just
    return the canned Response map directly."
   (:require
+   [clojure.edn :as edn]
    [clojure.string :as str]
    [clojure.test :refer [deftest testing is use-fixtures]]
    [com.fulcrologic.statecharts.promise :as p]
    [escapement.llm.protocol :as proto]
+   [escapement.protocols :as eproto]
+   [escapement.storage.memory :as mem]
    [escapement.tools.protocol :as tp]
    [us.whitford.llm-repl.completion :as completion]
    [us.whitford.llm-repl.registry :as registry]
    [us.whitford.llm-repl.roster :as llm]
    [us.whitford.llm-repl.tape :as tape]
-   [us.whitford.llm-repl.tools :as tools]))
+   [us.whitford.llm-repl.tools :as tools]
+   [us.whitford.llm-repl.trace :as trace]))
 
 ;; ── fixture: clean registry ⊕ a trivial test tool (avoids real eval side
 ;;    effects that :clojure/eval would carry into a dispatch test) ─────────
@@ -32,11 +36,13 @@
 
 (defn- reset-fixture
   [f]
+  (trace/close!)                 ; trace state is global — never leak an install
   (reset! registry/sessions* {})
   (registry/reset-events!)
   (reset! registry/version* 0)
   (tp/register! tools/tool-registry* (->EchoTool))
-  (f))
+  (f)
+  (trace/close!))
 
 (use-fixtures :each reset-fixture)
 
@@ -322,3 +328,69 @@
 (deftest tool-depth-conveys-through-future-test
   (is (= 1 (binding [completion/*tool-depth* 1]
              @(future completion/*tool-depth*)))))
+
+;; ── trace capture seams (design/trace-durability.md § capture table) ─────
+
+(defn- install-trace!
+  "Memory-store trace runtime for this test; fixture close!s either way."
+  []
+  (let [store (mem/new-store)]
+    (trace/install! {:store store})
+    store))
+
+(defn- read-blob [store path]
+  (some-> (eproto/read-artifact store "main" path) edn/read-string))
+
+(deftest plain-complete-captures-request-and-response-test
+  (let [store     (install-trace!)
+        responses (atom [(text-response "yo")])
+        requests  (atom [])
+        stub      (stub-backend responses requests)
+        config    {:model :m :preamble? false :system nil}
+        t         (tape/append-user [] "hi")]
+    (with-redefs [completion/session-backend (fn [_ _] stub)]
+      ((completion/plain-complete config :s) t))
+    (testing "the FULL wire request captured at turn ≡ (count tape) — what
+              actually rode the wire, not a re-derivation"
+      (is (= (first @requests) (read-blob store "nodes/s/1/turns/1/request.edn"))))
+    (testing "the response captured VERBATIM"
+      (is (= (text-response "yo") (read-blob store "nodes/s/1/turns/1/response.edn"))))))
+
+(deftest plain-complete-tapeless-binding-suppresses-capture-test
+  (let [store (install-trace!)
+        stub  (stub-backend (atom [(text-response "yo")]) (atom []))]
+    (with-redefs [completion/session-backend (fn [_ _] stub)]
+      (binding [trace/*capture?* false]
+        ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+         (tape/append-user [] "hi"))))
+    (testing "no blobs — the tapeless drivers' receipt-only contract"
+      (is (nil? (read-blob store "nodes/s/1/turns/1/request.edn")))
+      (is (nil? (read-blob store "nodes/s/1/turns/1/response.edn"))))))
+
+(deftest tool-complete-captures-loop-test
+  (let [store     (install-trace!)
+        responses (atom [(tool-use-response "tu1" "test_echo" {:x 42})
+                         (text-response "final")])
+        requests  (atom [])
+        stub      (stub-backend responses requests)
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
+    (with-redefs [completion/session-backend (fn [_ _] stub)]
+      ((completion/tool-complete config :s) []))
+    (testing "the BASE request (tools ⊕ oriented system) captured at turn 0"
+      (let [req (read-blob store "nodes/s/1/turns/0/request.edn")]
+        (is (seq (:tools req)))
+        (is (str/includes? (:system req) ":s"))))
+    (testing "intermediate round under rounds/<k>-response (blob capture
+              overwrites — 'response' would keep only the last round)"
+      (is (= :tool_use (-> (read-blob store "nodes/s/1/turns/0/rounds/0-response.edn")
+                           :content first :type))))
+    (testing "the FINAL text response under response.edn"
+      (is (= "final" (-> (read-blob store "nodes/s/1/turns/0/response.edn")
+                         :content first :text))))
+    (testing "tool result blob addressed by tool_use_id"
+      (is (= "42" (:result (read-blob store "nodes/s/1/turns/0/tool-results/tu1.edn")))))
+    (testing "the ⚡ receipt carries :io/ref pointing at that blob"
+      (is (some #(and (= :tool (:kind %))
+                      (= "nodes/s/1/turns/0/tool-results/tu1.edn" (:io/ref %)))
+                @registry/events*)))))

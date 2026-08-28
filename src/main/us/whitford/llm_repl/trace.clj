@@ -59,6 +59,13 @@
 
 (defn enabled? [] (some? @state*))
 
+(defn capturing?
+  "True iff a send happening NOW would be blob-captured — enabled ∧ not
+   inside a tapeless-driver binding. The gate receipts consult before
+   claiming an :io/ref (a ref to a blob that will never exist is a lie)."
+  []
+  (and *capture?* (enabled?)))
+
 (defn- ctx
   "The escapement capture context for `slug`, or nil when disabled."
   [slug]

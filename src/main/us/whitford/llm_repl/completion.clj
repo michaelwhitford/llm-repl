@@ -51,7 +51,8 @@
    [us.whitford.llm-repl.registry :as registry]
    [us.whitford.llm-repl.roster :as llm]
    [us.whitford.llm-repl.tape :as tape]
-   [us.whitford.llm-repl.tools :as tools]))
+   [us.whitford.llm-repl.tools :as tools]
+   [us.whitford.llm-repl.trace :as trace]))
 
 ;; ── pure tape mechanics (no backend, no booted system) ─────────────────────
 
@@ -148,12 +149,22 @@
    backend seam through the roster backend (built from the config file), await,
    extract the assistant text (loud on a reasoning-only blank — D4c). The
    tool-less path (anima's default-complete verbatim — lineage);
-   `default-complete` routes here unless :tools is armed."
+   `default-complete` routes here unless :tools is armed.
+
+   Trace seam (design/trace-durability.md): the FULL wire request and the
+   VERBATIM response (thinking blocks included — the tape drops them, the
+   trace keeps them) capture at turn ≡ (count tape) — the index the
+   assistant reply lands at when the driver commits. No-ops when tracing is
+   off or a tapeless driver bound `trace/*capture?*` false."
   [config slug]
   (fn [tape]
     (let [backend  (session-backend config slug)
-          response (p/await! (proto/send-turn backend (build-request config slug tape)))]
-      (loud-final-text response slug))))
+          request  (build-request config slug tape)
+          turn     (count tape)]
+      (trace/request! slug turn request (:text (last tape)))
+      (let [response (p/await! (proto/send-turn backend request))]
+        (trace/capture! slug turn "response" response (assistant-text response))
+        (loud-final-text response slug)))))
 
 ;; ── the self-eval tool loop (STANDALONE accretion #3 — the model as client) ─
 ;;
@@ -260,11 +271,23 @@
 (defn- dispatch-tool!
   "One tool_use block → tp/dispatch (malli-gated, throw-caught upstream) ⊕ a
    ⚡ receipt. Unknown wire names return error-data (the model reads and
-   corrects — λ mirror)."
-  [slug name->kw {:keys [name input]}]
+   corrects — λ mirror).
+
+   Trace: the ⚡ receipt carries `:io/ref` for where the result blob WILL
+   land (locator determinism — the path is a pure fn of coords, so the
+   pre-dispatch activity signal is kept AND the receipt points into the
+   disk tree); the blob itself captures post-dispatch as
+   `tool-results/<tool_use_id>` (evals are effectful — the tape alone can't
+   replay them; this blob is the trace the ns docstring's honesty caveat
+   promised)."
+  [slug turn name->kw {:keys [id name input]}]
   (if-let [kw (get name->kw name)]
-    (do (registry/event! {:kind :tool :slug slug :msg (str "⚡ " (receipt-preview input))})
-        (tp/dispatch tools/tool-registry* kw input))
+    (do (registry/event!
+         (cond-> {:kind :tool :slug slug :msg (str "⚡ " (receipt-preview input))}
+           (trace/capturing?) (assoc :io/ref (trace/ref-for slug turn (str "tool-results/" id)))))
+        (let [result (tp/dispatch tools/tool-registry* kw input)]
+          (trace/capture! slug turn (str "tool-results/" id) result (str (:result result)))
+          result))
     {:result (str "no such tool: " name) :is-error true}))
 
 (defn- tool-result-block
@@ -298,9 +321,14 @@
     (binding [*tool-depth* (inc *tool-depth*)]
       (let [{:keys [defs name->kw]} (tool-wire (session-tools (:tools config)))
             backend     (session-backend config slug)
+            turn        (count tape)
             base        (-> (build-request config slug tape)
                             (with-tools-system config slug)
                             (assoc :tools defs))
+            ;; trace: the BASE request (tools ⊕ oriented system on the wire) —
+            ;; first-write-wins upstream, so the loop's physical resends never
+            ;; clobber what replay wants (the real prompt)
+            _           (trace/request! slug turn base (:text (last tape)))
             send!       (fn [messages]
                           (p/await! (proto/send-turn backend (assoc base :messages messages))))
             send-final! (fn [messages]
@@ -313,23 +341,33 @@
                 uses     (filterv #(= :tool_use (:type %)) (:content response))]
             (cond
               (empty? uses)
-              (loud-final-text response slug)
+              (do (trace/capture! slug turn "response" response (assistant-text response))
+                  (loud-final-text response slug))
 
               (>= bounce tool-bounce-budget)
-              (let [refusals (mapv #(tool-result-block % {:result tool-budget-refusal :is-error true})
+              (let [_        (trace/capture! slug turn (str "rounds/" bounce "-response")
+                                             response (str (count uses) " tool_use (budget)"))
+                    refusals (mapv #(tool-result-block % {:result tool-budget-refusal :is-error true})
                                    uses)
                     _        (registry/event! {:kind :tool :slug slug :msg (str "⚡ budget! " bounce "↯")})
                     final    (send-final! (conj messages
                                                 {:role :assistant :content (:content response)}
                                                 {:role :user :content refusals}))]
+                (trace/capture! slug turn "response" final (assistant-text final))
                 (loud-final-text final slug))
 
               :else
               (let [remaining (- tool-bounce-budget bounce 1)]
+                ;; intermediate rounds get their OWN locators (blob capture
+                ;; overwrites; "response" would keep only the last round —
+                ;; the intermediate thinking/tool_use blocks are exactly the
+                ;; reconstruction material, design § build decisions 3)
+                (trace/capture! slug turn (str "rounds/" bounce "-response")
+                                response (str (count uses) " tool_use"))
                 (recur (conj messages
                              {:role :assistant :content (:content response)}
                              {:role :user :content (mapv #(tool-result-block
-                                                           % (dispatch-tool! slug name->kw %) remaining)
+                                                           % (dispatch-tool! slug turn name->kw %) remaining)
                                                          uses)})
                        (inc bounce))))))))))
 

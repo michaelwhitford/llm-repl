@@ -9,18 +9,26 @@
    v0.2.0 bug (a concurrent write silently clobbered by store!) WITHOUT
    threads or sleeps — no flakiness possible."
   (:require
+   [clojure.edn :as edn]
    [clojure.string :as str]
    [clojure.test :refer [deftest testing is use-fixtures]]
+   [escapement.llm.protocol :as proto]
+   [escapement.protocols :as eproto]
+   [escapement.storage.memory :as mem]
    [us.whitford.llm-repl :as repl]
+   [us.whitford.llm-repl.completion :as completion]
    [us.whitford.llm-repl.registry :as registry]
-   [us.whitford.llm-repl.tape :as tape]))
+   [us.whitford.llm-repl.tape :as tape]
+   [us.whitford.llm-repl.trace :as trace]))
 
 (defn- reset-registry-fixture
   [f]
+  (trace/close!)                 ; trace state is global — never leak an install
   (reset! registry/sessions* {})
   (registry/reset-events!)
   (reset! registry/version* 0)
-  (f))
+  (f)
+  (trace/close!))
 
 (use-fixtures :each reset-registry-fixture)
 
@@ -283,3 +291,101 @@
     (is (some? (repl/snapshot (repl/variant-slug :base :armed))))
     (is (= :base-bare (repl/variant-slug :base :bare)))
     (is (= :base-armed (repl/variant-slug :base :armed)))))
+
+;; ── trace integration at the driver grain (design/trace-durability.md) ───
+;;
+;; The capture seam lives in `completion` (its own tests cover blob shapes);
+;; these lock the API-layer contracts: seed at open!, :io/ref on ✓ (and its
+;; honesty gate), the tapeless drivers' receipt-only rule, compact!'s durable
+;; original, and the tape.edn snapshot riding every driver commit.
+
+(defn- install-trace! []
+  (let [store (mem/new-store)]
+    (trace/install! {:store store})
+    store))
+
+(defn- read-blob [store path]
+  (some-> (eproto/read-artifact store "main" path) edn/read-string))
+
+(defn- stub-backend
+  "Minimal LLMBackend for driving the REAL default-complete path (capture
+   rides inside it — an injected :complete-fn would bypass the seam)."
+  [reply]
+  (reify proto/LLMBackend
+    (send-turn [_ _request]
+      {:stop-reason :end_turn :content [{:type :text :text reply}]
+       :usage {} :model "stub"})))
+
+(deftest open!-captures-seed-test
+  (let [store (install-trace!)]
+    (repl/open! :s {:model :m})
+    (testing "creation writes the replayable seed (config ⊕ birth metadata)"
+      (let [seed (read-blob store "nodes/s/1/seed.edn")]
+        (is (= :s (:slug seed)))
+        (is (= :m (get-in seed [:config :model])))))
+    (testing "re-open! does not re-seed (creation only)"
+      (eproto/write-artifact! store "main" "nodes/s/1/seed.edn" "sentinel" {})
+      (repl/open! :s {:temperature 0.5})
+      (is (= "sentinel" (eproto/read-artifact store "main" "nodes/s/1/seed.edn"))))))
+
+(deftest eval!-default-path-captures-and-refs-test
+  (let [store (install-trace!)]
+    (with-redefs [completion/session-backend (fn [_ _] (stub-backend "yo"))]
+      (repl/eval! :s "hi" {:model :m :preamble? false :system nil}))
+    (testing "response blob landed at the assistant's tape index (1)"
+      (is (= "yo" (-> (read-blob store "nodes/s/1/turns/1/response.edn")
+                      :content first :text))))
+    (testing "the ✓ receipt carries :io/ref pointing at it"
+      (is (some #(and (= :eval! (:kind %))
+                      (str/starts-with? (str (:msg %)) "✓")
+                      (= "nodes/s/1/turns/1/response.edn" (:io/ref %)))
+                @registry/events*)))
+    (testing "the tape.edn snapshot followed the commit (depth 2, full map)"
+      (let [snap (read-blob store "nodes/s/1/tape.edn")]
+        (is (= 2 (count (:tape snap))))
+        (is (contains? snap :config))))))
+
+(deftest eval!-injected-complete-fn-no-ref-test
+  (install-trace!)
+  (repl/eval! :s "hi" {:complete-fn stub-complete})
+  (testing "an injected :complete-fn bypasses the capture seam — the ✓
+            receipt must NOT claim a ref to a blob that never landed"
+    (let [ev (last (filter #(and (= :eval! (:kind %))
+                                 (str/starts-with? (str (:msg %)) "✓"))
+                           @registry/events*))]
+      (is (some? ev))
+      (is (not (contains? ev :io/ref))))))
+
+(deftest tapeless-drivers-receipt-only-test
+  (let [store (install-trace!)]
+    (repl/open! :s)
+    (with-redefs [completion/session-backend (fn [_ _] (stub-backend "out"))]
+      (repl/bounce! :s "probe" {:model :m :preamble? false :system nil})
+      (repl/trampoline! :s ["p1" "p2"] {:model :m :preamble? false :system nil}))
+    (testing "no request/response blobs from tapeless sends (human-decided:
+              colliding turn numbers — the receipt stream is their trace)"
+      (is (nil? (read-blob store "nodes/s/1/turns/1/request.edn")))
+      (is (nil? (read-blob store "nodes/s/1/turns/1/response.edn"))))
+    (testing "the receipts exist all the same"
+      (is (some #(= :bounce! (:kind %)) @registry/events*))
+      (is (some #(= :tramp! (:kind %)) @registry/events*)))))
+
+(deftest compact!-captures-durable-original-test
+  (let [store (install-trace!)
+        long-reply (apply str (repeat 200 "x"))]
+    (repl/eval! :cx "hi" {:complete-fn (fn [_ _] (fn [_] long-reply))})
+    (repl/compact! :cx 1 "λ essence")
+    (testing "the pre-compaction MESSAGE captured at turns/<i>/original.edn —
+              the arm-diff ground truth that outlives the registry (Q4)"
+      (let [blob (read-blob store "nodes/cx/1/turns/1/original.edn")]
+        (is (= long-reply (:text blob)))
+        (is (= :assistant (:role blob)))))
+    (testing "the on-tape :original still agrees (twin copies)"
+      (is (= long-reply (get-in (repl/snapshot :cx) [:tape 1 :original]))))))
+
+(deftest drop!-tombstones-snapshot-test
+  (let [store (install-trace!)]
+    (repl/eval! :s "hi" {:complete-fn stub-complete})
+    (repl/drop! :s)
+    (testing "drop! → tombstone (recovery must not resurrect it)"
+      (is (:trace/dropped (read-blob store "nodes/s/1/tape.edn"))))))
