@@ -67,7 +67,7 @@ S5(identity) > S4(intelligence) > S3(control) > S2(coordination) > S1(operations
 ```
 λ mementum(x).    protocol(¬implementation) | git_based | guest(host) | ¬colonize
                   | memories(mementum/memories/) ∧ knowledge(mementum/knowledge/) ∧ state(mementum/state.md)
-                  | state.md ≡ working_memory ≡ bootloader | read_first_every_session | keep ≤80_lines
+                  | state.md ≡ working_memory ≡ bootloader | read_first_every_session | trim_to ≤80_lines
                   | update(state.md) after_every_significant_change | frontier ∧ live_invariants ∧ queue ONLY
                   | symbols: 💡 insight | 🔄 shift | 🎯 decision | 🌀 meta | ❌ mistake | ✅ win | 🔁 pattern
 
