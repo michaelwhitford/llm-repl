@@ -143,8 +143,14 @@
 
 (defn tree-lines
   "The fork forest as glyph-drawn lines for the tree pane; `current`
-   highlighted (reverse video). Node ≡ name·depth, edge ≡ @branch-point."
-  [reg current theme w]
+   highlighted (reverse video). Node ≡ name·depth, edge ≡ @branch-point.
+
+   `_theme` is unused HERE (this pane paints with the raw `cmp/` attribute
+   constants, not themed roles) but stays in the signature: every pane fn
+   takes (…, theme, w) so `render` calls them uniformly. Note the shadow —
+   `theme` is also the escapement ns alias this file uses, so an unused
+   param of that name reads as used until the linter says otherwise."
+  [reg current _theme w]
   (let [walk (fn walk [slug parent prefix last?]
                (let [s     (get reg slug)
                      label (str (short-name slug parent)

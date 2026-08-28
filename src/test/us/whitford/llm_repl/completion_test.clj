@@ -5,14 +5,14 @@
    (slug-aware orientation, structural/visible budget, loud reasoning-only
    finals). Loop tests stub the backend at `completion/session-backend`
    (plain `defn-`, redef-able by design — see that fn's docstring) so no
-   real network call ever happens; `p/await!` passes a plain map straight
-   through (verified: `(p/await! 42)` → `42`), so `send-turn` can just
-   return the canned Response map directly."
+   real network call ever happens; statecharts' `p/await!` passes a plain map
+   straight through (verified: `(p/await! 42)` → `42`), so `send-turn` can
+   just return the canned Response map directly — which is why this ns does
+   NOT require that namespace: the await! lives in the code under test."
   (:require
    [clojure.edn :as edn]
    [clojure.string :as str]
    [clojure.test :refer [deftest testing is use-fixtures]]
-   [com.fulcrologic.statecharts.promise :as p]
    [escapement.llm.protocol :as proto]
    [escapement.protocols :as eproto]
    [escapement.storage.memory :as mem]

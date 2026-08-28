@@ -31,9 +31,8 @@ the human's push/tag/anima moves.
   the only post-hoc ground truth ([compaction](knowledge/compaction.md)).
 - **trace-durability** — the daemon has a flight recorder: `.llm-repl/`
   holds requests/responses (thinking survives), tool rounds ∧ results,
-  `compact!` originals, `tape.edn` (auto-recovered at boot, receipt-and-
-  skip), transcript JSONL (`:seq` continuous across restarts). Suite
-  162/493. Tapeless drivers receipt-only; `--plain` never traces.
+  `compact!` originals, `tape.edn` (auto-recovered at boot), transcript
+  JSONL (`:seq` continuous across restarts). Tapeless drivers receipt-only.
   CONTAINER-VERIFIED: `.llm-repl/` keys off CWD ≡ `/work`, so the recorder
   writes through the mount to the host ∧ `:io/ref` resolves from macOS —
   zero container-specific code ([container](knowledge/container.md)).
@@ -47,10 +46,9 @@ the human's push/tag/anima moves.
 [extension-horizon-pilot](knowledge/extension-horizon-pilot.md). Traps ≡
 `memories/` (18 pages, one insight each — `git grep` before re-deriving).
 
-**Human moves open:** push main (first CI run — 64 commits, CI has never
-run) · v0.3.0 tag when ready (release.yml deploys full/RC only;
-library-contract hardens at first RC) · anima `:local/root` ∨ `0.3.0-alpha`
-from ~/.m2 · rebuild any image ∧ restart any daemon predating the `trace` ns.
+**Human moves open:** v0.3.0 tag when ready (release.yml deploys full/RC
+only; library-contract hardens at first RC) · anima `:local/root` ∨
+`0.3.0-alpha` · rebuild any image ∧ restart any daemon predating `trace`.
 
 **Next pickup (agent):** extension-horizon-pilot — read
 [the page](knowledge/extension-horizon-pilot.md) FIRST (extension ≡
@@ -69,6 +67,8 @@ DURABLE now).
   boundary is ~/.config/llm-repl/config.edn. AGENTS.md with nucleus content
   stays UNTRACKED.
 - nREPL ≡ unauthenticated eval — `:bind "0.0.0.0"` only behind a wall.
+- Lint: `.clj-kondo/config.edn` PINS the levels it depends on — a dev's home
+  config merges UNDER it and must never be able to lint weaker than CI.
 - Config stickiness: open! persists; absence ≠ reset.
 - Knowledge scope: mementum here ≡ llm-repl the INSTRUMENT; model findings
   gathered THROUGH it belong to anima.

@@ -1,7 +1,31 @@
-{;; com.fulcrologic.statecharts.promise creates its vars at LOAD time —
- ;; `(intern *ns* 'await! (deref (resolve 'promesa.core/await!)))` bridges to
- ;; promesa as a soft dependency. Static analysis can't see runtime-interned
- ;; vars, so kondo reports unresolved-var at every p/await! call site while
- ;; the runtime resolves them fine (assert: runtime > source). Scoped to the
- ;; one namespace that lies to static analysis; everything else stays linted.
- :linters {:unresolved-var {:exclude [com.fulcrologic.statecharts.promise]}}}
+{;; ── Project lint contract ───────────────────────────────────────────────
+ ;; clj-kondo merges HOME config (~/.config/clj-kondo/config.edn) UNDER this
+ ;; file. A developer whose dotfiles disable a linter therefore lints WEAKER
+ ;; than CI, which runs with no home config — silent divergence, discovered
+ ;; the expensive way (first CI run ever: 3 warnings in CI, 1 locally, same
+ ;; kondo version ∧ same command; the delta was one dotfile outside the
+ ;; repo). So this project PINS the levels it depends on: the repo is
+ ;; authoritative, no home config can weaken it, and `clj-kondo --lint
+ ;; src/main src/test` means the same thing on every machine and in CI.
+ :linters
+ {:unused-binding      {:level :warning}
+  :unused-namespace    {:level :warning}
+  :unused-referred-var {:level :warning}
+  :unused-private-var  {:level :warning}
+
+  ;; com.fulcrologic.statecharts.promise creates its vars at LOAD time —
+  ;; `(intern *ns* 'await! (deref (resolve 'promesa.core/await!)))` bridges to
+  ;; promesa as a soft dependency. Static analysis can't see runtime-interned
+  ;; vars, so kondo reports unresolved-var at every p/await! call site while
+  ;; the runtime resolves them fine (assert: runtime > source). Scoped to the
+  ;; one namespace that lies to static analysis; everything else stays linted.
+  :unresolved-var {:exclude [com.fulcrologic.statecharts.promise]}
+
+  ;; `main` refers the api ns :all DELIBERATELY — it is the plain loop's eval
+  ;; surface: a typed `(fork! …)` is eval'd with `*ns*` bound to
+  ;; `us.whitford.llm-repl.main` (main.clj `eval-form`), so every api command
+  ;; must resolve BARE there. :refer :all is the open slot — a new api
+  ;; command becomes typeable with no edit here (λ extend: addition >
+  ;; modification). An explicit :refer list would close that slot to buy a
+  ;; clean lint; the slot is worth more. Scoped to the one referred ns.
+  :refer-all {:exclude [us.whitford.llm-repl]}}}
