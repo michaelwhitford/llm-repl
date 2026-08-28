@@ -5,7 +5,9 @@
             [us.whitford.llm-repl-test]
             [us.whitford.llm-repl.client-test]
             [us.whitford.llm-repl.completion-test]
+            [us.whitford.llm-repl.daemon-test]
             [us.whitford.llm-repl.registry-test]
+            [us.whitford.llm-repl.roster-test]
             [us.whitford.llm-repl.tape-test]
             [us.whitford.llm-repl.tui.frame-test]))
 
@@ -15,5 +17,7 @@
                                            'us.whitford.llm-repl.completion-test
                                            'us.whitford.llm-repl.client-test
                                            'us.whitford.llm-repl.tui.frame-test
+                                           'us.whitford.llm-repl.roster-test
+                                           'us.whitford.llm-repl.daemon-test
                                            'us.whitford.llm-repl-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

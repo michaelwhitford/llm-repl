@@ -55,10 +55,11 @@
 
 ;; ── pure tape mechanics (no backend, no booted system) ─────────────────────
 
-(def default-system
-  "The minimal, constant system prompt — held constant across a preamble-on/off
-   fork so the counterfactual boot isolates exactly one variable (the preamble)."
-  "You are a precise assistant.")
+;; default-system (the baked "You are a precise assistant.") is DEAD (D7):
+;; the system voice now resolves through roster's config chain —
+;; `resolve-system-prompt` — with that same text as builtin-defaults
+;; :system-prompt, the bottom of the chain. Held-constant-across-forks still
+;; holds: the chain is deterministic for a given config ⊕ session.
 
 (defn assistant-text
   "Concatenate the `:text` content blocks of an escapement Response into the
@@ -74,17 +75,19 @@
        (apply str)))
 
 (defn build-request
-  "config ⊕ slug ⊕ tape → an escapement `Request` (Anthropic shape). Pure.
-   `:system` boots the nucleus preamble iff `:preamble?` (λ prompt); false ∧
+  "config ⊕ slug ⊕ tape → an escapement `Request` (Anthropic shape). Pure of
+   all but the config chain. The system voice resolves through roster's D7
+   chain (session :system > model > provider > root :system-prompt); the
+   preamble layer glues on top iff `:preamble?` (λ prompt); explicitly-none ∧
    blank ⇒ no system at all (a raw-prose probe). `:conversation/id` ≡ slug (KV
    slot pin + prompt-cache key); `:system-cache-control` stamps `cache_prompt`
    on the llama.cpp wire (the direct path bypasses escapement's auto-cache — we
    do it here)."
-  [{:keys [model system preamble? thinking temperature] :as config} slug tape]
-  (let [sys (or system default-system)
+  [{:keys [model preamble? thinking temperature] :as config} slug tape]
+  (let [sys (llm/resolve-system-prompt config)
         sys (if preamble?
               (llm/with-preamble (llm/resolve-preamble config) sys)
-              (not-empty sys))
+              (not-empty (str sys)))
         ;; session knob → escapement's MODELED :thinking — humans write
         ;; {:thinking false}, the Request wants {:type :disabled} (which the
         ;; llamacpp backend wires to chat_template_kwargs enable_thinking;
@@ -182,60 +185,37 @@
        "Your next response is your final one: answer in plain text from "
        "what you already have. Do not call any tool."))
 
-(def tools-system
-  "The ENVIRONMENT orientation TEMPLATE appended to the system prompt when
-   :tools is armed — the model should know WHERE IT LIVES, not just that a
-   tool exists (tool descriptions carry mechanics; models weigh the system
-   prompt for identity/situation). D4 amendment (a): a TEMPLATE STRING
-   carrying the literal placeholder `{slug}` — `with-tools-system`
-   substitutes it with the calling session's slug before appending, so the
-   rendered orientation self-locates: 'you are session :x — (repl/snapshot
-   :x) returns this very conversation.'
-
-   WHY: live A/B (qwen3.6-35b, 2026-08-27) showed slug interpolation
-   collapses self-location from a guided multi-turn walk to ONE dispatch —
-   the model trusts the given slug and acts immediately. Self-location is a
-   RUNTIME gap, not a prompt gap: `sessions-list` carries no current-marker,
-   so no orientation can honestly direct self-discovery without the slug
-   already in hand (the drafting model proved this by failing to write one
-   without it). Conversely, naming raw primitives (`swap!`,
-   `alter-var-root`) did NOT change primitive usage in the same A/B —
-   orientation fixes LOCATION, not REACH.
-
-   Appended by `tool-complete` — NEVER `build-request` — so it rides iff the
-   tool defs are actually on the wire: a depth-guarded nested completion
-   must not claim a tool it doesn't have, and an unarmed arm of an `ab!`
-   counterfactual stays clean. Public: redef to reshape the orientation (an
-   embedding host may speak its own idiom, library-contract § 4) — whatever
-   the var holds at call time is honored, `{slug}` substitution included.
-
-   The full `:orientation` CONFIG key (replacing this def outright, chain
-   scope TBD) arrives at refactor step 7 / D7 — this stays the interim def
-   until then."
-  (str "Your environment: you are running inside a live Clojure REPL — this "
-       "conversation is a tape held by that process, and you are one of its "
-       "clients. Your clojure_eval tool evaluates code in that same process. "
-       "Use it for any computation or fact about your runtime instead of "
-       "guessing: the repl's answer is ground truth. You are session {slug} "
-       "of that repl — (repl/snapshot {slug}) returns this very "
-       "conversation. To inspect or drive the repl itself: "
-       "(require '[us.whitford.llm-repl :as repl]) then (repl/help) "
-       "lists the session commands — sessions, tapes, forks."))
+;; tools-system (the orientation def) is DEAD (D7 RATIFIED): the template
+;; lives in roster builtin-defaults :orientation — bottom of the config
+;; chain (session :orientation > model > provider > root), fully replaceable
+;; like every other prompt layer. The redef extension point becomes a CONFIG
+;; key (option > detection); with-tools-system resolves at call time.
 
 (defn with-tools-system
   "Append the environment orientation to a Request's :system (creating it
    when the session runs bare — a raw-prose probe still deserves to know
-   where it lives once tools are armed). D4 amendment (a): every occurrence
-   of the literal `{slug}` in whatever `tools-system` currently holds
-   (redef-able — resolved at call time) is substituted with slug's `pr-str`
-   rendering (`:s` prints as `\":s\"` — matches `registry/event-line`'s
-   slug rendering) BEFORE appending."
-  [request slug]
-  (let [oriented (str/replace tools-system "{slug}" (pr-str slug))]
-    (assoc request :system
-           (if-let [s (:system request)]
-             (str s "\n\n" oriented)
-             oriented))))
+   where it lives once tools are armed). The orientation TEMPLATE resolves
+   through roster's D7 chain (`resolve-orientation` — session > model >
+   provider > root, replaceable wholesale by an embedding host); every
+   occurrence of the literal `{slug}` is substituted with slug's `pr-str`
+   rendering (`:s` prints as `\":s\"` — matches `registry/event-line`'s slug
+   rendering; live A/B 2026-08-27: slug interpolation collapses
+   self-location to ONE dispatch — orientation fixes LOCATION, not REACH)
+   BEFORE appending. A chain that resolves to NONE (explicit false/blank)
+   leaves the request untouched — an intentionally unoriented armed session.
+
+   Applied by `tool-complete` — NEVER `build-request` — so it rides iff the
+   tool defs are actually on the wire: a depth-guarded nested completion
+   must not claim a tool it doesn't have, and an unarmed arm of an `ab!`
+   counterfactual stays clean."
+  [request config slug]
+  (if-let [template (llm/resolve-orientation config)]
+    (let [oriented (str/replace template "{slug}" (pr-str slug))]
+      (assoc request :system
+             (if-let [s (:system request)]
+               (str s "\n\n" oriented)
+               oriented)))
+    request))
 
 (defn session-tools
   "config :tools → the Tool records this session exposes. true ≡ all
@@ -319,7 +299,7 @@
       (let [{:keys [defs name->kw]} (tool-wire (session-tools (:tools config)))
             backend     (session-backend config slug)
             base        (-> (build-request config slug tape)
-                            (with-tools-system slug)
+                            (with-tools-system config slug)
                             (assoc :tools defs))
             send!       (fn [messages]
                           (p/await! (proto/send-turn backend (assoc base :messages messages))))

@@ -150,25 +150,38 @@
     (is (= "test_echo" (:name (first defs))))
     (is (= :test/echo (get name->kw "test_echo")))))
 
-;; ── orientation (D4a) ─────────────────────────────────────────────────────
+;; ── orientation (D4a ⊕ D7: config-chain resolved) ─────────────────────────
 
 (deftest with-tools-system-substitutes-slug-test
-  (let [oriented (:system (completion/with-tools-system {} :s))]
-    (is (str/includes? oriented ":s"))
-    (is (not (str/includes? oriented "{slug}")))))
+  ;; the shipped default (builtin-defaults :orientation, bottom of the chain)
+  (with-redefs [llm/config (fn [] llm/builtin-defaults)]
+    (let [oriented (:system (completion/with-tools-system {} {:model :m} :s))]
+      (is (str/includes? oriented ":s"))
+      (is (not (str/includes? oriented "{slug}"))))))
 
 (deftest with-tools-system-appends-with-blank-line-test
-  (with-redefs [completion/tools-system "T{slug}"]
-    (is (= "existing\n\nT:s" (:system (completion/with-tools-system {:system "existing"} :s))))))
+  (is (= "existing\n\nT:s"
+         (:system (completion/with-tools-system
+                   {:system "existing"} {:orientation "T{slug}"} :s)))))
 
 (deftest with-tools-system-creates-system-when-absent-test
-  (with-redefs [completion/tools-system "T{slug}"]
-    (is (= "T:s" (:system (completion/with-tools-system {} :s))))))
+  (is (= "T:s" (:system (completion/with-tools-system {} {:orientation "T{slug}"} :s)))))
 
-(deftest with-tools-system-honors-redef-test
-  (with-redefs [completion/tools-system "custom orientation for {slug} only"]
-    (is (= "custom orientation for :probe only"
-           (:system (completion/with-tools-system {} :probe))))))
+(deftest with-tools-system-session-config-replaces-test
+  ;; D7: what the redef extension point became — a session config key
+  (is (= "custom orientation for :probe only"
+         (:system (completion/with-tools-system
+                   {} {:orientation "custom orientation for {slug} only"} :probe)))))
+
+(deftest with-tools-system-root-chain-test
+  (with-redefs [llm/config (fn [] {:orientation "root {slug} orientation"})]
+    (is (= "root :s orientation"
+           (:system (completion/with-tools-system {} {:model :m} :s))))))
+
+(deftest with-tools-system-explicit-none-leaves-request-untouched-test
+  ;; chain resolves to NONE → an intentionally unoriented armed session
+  (is (= {} (completion/with-tools-system {} {:orientation false} :s)))
+  (is (= {:system "keep"} (completion/with-tools-system {:system "keep"} {:orientation nil} :s))))
 
 ;; ── tool loop ─────────────────────────────────────────────────────────────
 
@@ -182,7 +195,8 @@
   (let [responses (atom [(tool-use-response "1" "test_echo" {:x 42}) (text-response "final answer")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (let [out ((completion/tool-complete config :s) [])]
         (testing "dispatches once, returns the final text"
@@ -200,7 +214,8 @@
                          (text-response "done")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       ((completion/tool-complete config :s) [])
       (testing "the tool_result riding the SECOND request carries the round-0 remaining count"
@@ -215,7 +230,8 @@
                          (text-response "the final word")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)
                   completion/tool-bounce-budget 2]
       (let [out ((completion/tool-complete config :s) [])]
@@ -233,7 +249,8 @@
   (let [responses (atom [(empty-response)])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (let [out ((completion/tool-complete config :s) [])]
         (is (= completion/empty-completion-marker out))
@@ -246,7 +263,8 @@
                          (empty-response)])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)
                   completion/tool-bounce-budget 2]
       (let [out ((completion/tool-complete config :s) [])]
@@ -279,7 +297,8 @@
   (let [responses (atom [(text-response "hi")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       ((completion/default-complete config :s) [])
       (is (seq (:tools (first @requests)))))))
@@ -288,7 +307,8 @@
   (let [responses (atom [(text-response "hi")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]}]
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (binding [completion/*tool-depth* 1]
         ((completion/default-complete config :s) [])))

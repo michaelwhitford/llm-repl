@@ -52,6 +52,28 @@
  ;;   at the repl: (open! :s {:preamble "just this session"})
  ;;                (fork! :s :bare {:preamble? false})   ; same tape, no preamble
 
+ ;; The WHOLE prompt stack resolves the same way (same chain, same value
+ ;; shapes — string | {:file path} | false). Every layer is replaceable, so
+ ;; a host can swap the entire stack for its own idiom (e.g. nucleus
+ ;; lambda-notation prompt files):
+ ;;
+ ;;   :system-prompt — the system voice. Default: "You are a precise
+ ;;     assistant." Chain: session :system > :model/system-prompt >
+ ;;     :provider/system-prompt > this key.
+ ;;   :orientation — the environment template appended when :tools is armed
+ ;;     (tells the model WHERE IT LIVES; the literal {slug} is substituted
+ ;;     with the session's slug at call time). Default: the built-in repl
+ ;;     orientation. Chain: session :orientation > :model/orientation >
+ ;;     :provider/orientation > this key. false ≡ armed but unoriented.
+ ;;
+ ;; :system-prompt {:file "~/.config/llm-repl/system.λ"}
+ ;; :orientation   {:file "~/.config/llm-repl/orientation.λ"}
+
+ ;; Unknown top-level keys are REJECTED at load (a typo fails loud instead
+ ;; of silently shaping a mystery roster). Embedding hosts put their own
+ ;; keys under :ext — the one open slot:
+ ;; :ext {:anima/whatever …}
+
  ;; The model a session gets when (open! :s) doesn't name one.
  :default-model :qwen36-35b-a3b
 

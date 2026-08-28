@@ -102,17 +102,18 @@
   [e]
   (registry/event! e))
 
-(def default-config
-  "The interpreter config an unqualified session runs — :model resolves from
-   the config file's :default-model (roster/default-model, read at load).
-   Domain-neutral — this REPL is a tool agents are GRANTED, NOT bound to any
-   subject/observer pairing; the cartographer picks its subject, others pick
-   theirs. Every knob is overridable per session (`open!`/`eval!` opts) and
-   per fork. `:system` ≡ `completion/default-system` — the minimal, constant
-   system prompt held constant across a preamble-on/off fork so the
-   counterfactual boot isolates exactly one variable (the preamble)."
+(defn default-config
+  "The interpreter config an unqualified session runs — a FUNCTION (D7:
+   v0.2.0's `def` captured roster/default-model ∧ default-tools at load,
+   silently defeating `reload-config!`; now every open! reads the LIVE
+   config). Domain-neutral — this REPL is a tool agents are GRANTED, NOT
+   bound to any subject/observer pairing. Every knob is overridable per
+   session (`open!`/`eval!` opts) and per fork. `:system` is deliberately
+   ABSENT: the system voice resolves through roster's D7 config chain at
+   request-build time (session :system > model > provider > root
+   :system-prompt) — a session that wants its own voice passes :system."
+  []
   {:model       (llm/default-model)
-   :system      completion/default-system
    :preamble?   true
    :thinking    nil
    :temperature nil
@@ -167,7 +168,7 @@
                        (update-in reg [slug :config] merge overrides)
                        (assoc reg slug {:slug       slug
                                         :tape       []
-                                        :config     (merge default-config overrides)
+                                        :config     (merge (default-config) overrides)
                                         :turns      0
                                         :created-at (System/currentTimeMillis)})))
          [old new] (registry/mutate! f)]

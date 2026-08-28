@@ -20,6 +20,8 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [escapement.llm.providers :as providers]
+   [malli.core :as m]
+   [malli.error :as me]
    [us.whitford.llm-repl.llm.llamacpp :as llamacpp]))
 
 ;; ── config ────────────────────────────────────────────────────────────────────
@@ -37,18 +39,101 @@
                    :gemma-4-31b-it {:model/provider :local
                                     :model/port     5102}}
    :default-model :qwen36-35b-a3b
-   ;; the GENERIC default boot layer — deliberately bland; a machine's own
-   ;; boot seed belongs in its config file (chain: see resolve-preamble)
+   ;; the GENERIC default prompt stack — deliberately bland; a machine's own
+   ;; boot seed / system voice / orientation belong in its config file
+   ;; (D7 RATIFIED: all three layers fully replaceable, uniform chain — an
+   ;; embedding host swaps the whole stack, e.g. nucleus lambda notation)
    :preamble      "Be precise and concise. Say when you are unsure. Prefer runnable examples over prose."
+   :system-prompt "You are a precise assistant."
+   ;; the ENVIRONMENT orientation TEMPLATE appended when :tools is armed —
+   ;; the model should know WHERE IT LIVES ({slug} substituted at call time;
+   ;; live A/B 2026-08-27: slug interpolation collapses self-location to ONE
+   ;; dispatch — see completion/with-tools-system)
+   :orientation   (str "Your environment: you are running inside a live Clojure REPL — this "
+                       "conversation is a tape held by that process, and you are one of its "
+                       "clients. Your clojure_eval tool evaluates code in that same process. "
+                       "Use it for any computation or fact about your runtime instead of "
+                       "guessing: the repl's answer is ground truth. You are session {slug} "
+                       "of that repl — (repl/snapshot {slug}) returns this very "
+                       "conversation. To inspect or drive the repl itself: "
+                       "(require '[us.whitford.llm-repl :as repl]) then (repl/help) "
+                       "lists the session commands — sessions, tapes, forks.")
    :nrepl         {:port 0 :bind "127.0.0.1"}})
 
-(defn- read-edn-file
-  "Parse `f` when it exists, else nil. A malformed file fails LOUD (silent
-   fallback to defaults would mask a typo as a mystery roster)."
+;; ── config schema (D7: formal, closed ⊕ :ext) ─────────────────────────────────
+
+(def ^:private prompt-value-schema
+  "A prompt-stack layer value: literal string | {:file path} | false
+   (explicitly none — stops the chain)."
+  [:or :string [:map [:file :string]] [:= false]])
+
+(def config-schema
+  "The config contract (D7). CLOSED at the top level — an unknown key is a
+   typo caught at load, not a mystery roster; embedding hosts put their own
+   keys under :ext (the ratified escape hatch). config.example.edn validates
+   against this in CI (step 8)."
+  [:map {:closed true}
+   [:providers     {:optional true} [:map-of :keyword [:map-of :keyword :any]]]
+   [:models        {:optional true} [:map-of :keyword [:map-of :keyword :any]]]
+   [:default-model {:optional true} :keyword]
+   [:preamble      {:optional true} [:maybe prompt-value-schema]]
+   [:system-prompt {:optional true} [:maybe prompt-value-schema]]
+   [:orientation   {:optional true} [:maybe prompt-value-schema]]
+   [:tools         {:optional true} [:maybe [:or :boolean [:vector :keyword]]]]
+   [:nrepl         {:optional true} [:map
+                                     [:port {:optional true} :int]
+                                     [:bind {:optional true} :string]]]
+   [:attach        {:optional true} [:or :string :boolean
+                                     [:map
+                                      [:host {:optional true} :string]
+                                      [:port :int]]]]
+   [:ext           {:optional true} [:map-of :keyword :any]]])
+
+(defn validate-config
+  "Assert `cfg` against `config-schema`; returns `cfg` unchanged, or throws
+   ex-info carrying HUMANIZED errors keyed by path (D7 amendment:
+   `{:preamble [\"should be a string\"]}` instead of a mystery roster).
+   Public for the twin suite; the ONE caller is load-config."
+  [cfg]
+  (if (m/validate config-schema cfg)
+    cfg
+    (throw (ex-info (str "llm-repl config invalid: "
+                         (pr-str (me/humanize (m/explain config-schema cfg))))
+                    {:errors (me/humanize (m/explain config-schema cfg))}))))
+
+(defn read-edn-file
+  "Parse `f` when it exists, else nil. A malformed file fails LOUD, NAMING
+   the file (silent fallback to defaults would mask a typo as a mystery
+   roster) — and 'malformed' includes TRAILING FORMS (D7 amendment, the
+   live 40-minute mystery: a stray `}` closed the top-level map early and
+   `edn/read-string` silently read only the FIRST form — the rest of the
+   file vanished with no error, and reload couldn't help because disk ≠
+   what-was-read). Read ALL forms; more than one ⇒ throw naming what the
+   trailing content starts with. Public for the twin suite."
   [f]
   (let [file (io/file f)]
     (when (.exists file)
-      (edn/read-string (slurp file)))))
+      (with-open [r (java.io.PushbackReader. (io/reader file))]
+        (let [eof   (Object.)
+              forms (try
+                      (loop [acc []]
+                        (let [x (edn/read {:eof eof} r)]
+                          (if (identical? x eof) acc (recur (conj acc x)))))
+                      (catch Exception e
+                        (throw (ex-info (str "llm-repl config unreadable — " (.getPath file)
+                                             ": " (ex-message e))
+                                        {:file (.getPath file)} e))))]
+          (cond
+            (empty? forms)      nil
+            (= 1 (count forms)) (first forms)
+            :else
+            (throw (ex-info (str "llm-repl config " (.getPath file) " holds "
+                                 (count forms) " top-level forms — exactly one map "
+                                 "expected. A stray delimiter probably closed the "
+                                 "first form early; trailing content starts with: "
+                                 (pr-str (second forms)))
+                            {:file (.getPath file)
+                             :extra-forms (vec (rest forms))}))))))))
 
 (defn- config-sources
   "The file chain, weakest→strongest. XDG-style home path; repo-local
@@ -59,16 +144,20 @@
    (some-> (System/getenv "LLM_REPL_CONFIG") io/file)])
 
 (defn load-config
-  "Resolve the effective config: fold the file chain over builtin-defaults.
-   Top-level sections that are maps merge per key; scalars replace."
+  "Resolve the effective config: fold the file chain over builtin-defaults,
+   then VALIDATE the merged result (D7 — fails loud with humanized errors;
+   both boot and reload-config! pass through here, so a bad edit can never
+   silently land). Top-level sections that are maps merge per key; scalars
+   replace."
   []
-  (reduce (fn [acc f]
-            (if-let [m (some-> f read-edn-file)]
-              (merge-with (fn [a b] (if (and (map? a) (map? b)) (merge a b) b))
-                          acc m)
-              acc))
-          builtin-defaults
-          (config-sources)))
+  (validate-config
+   (reduce (fn [acc f]
+             (if-let [m (some-> f read-edn-file)]
+               (merge-with (fn [a b] (if (and (map? a) (map? b)) (merge a b) b))
+                           acc m)
+               acc))
+           builtin-defaults
+           (config-sources))))
 
 (defonce ^{:doc "The effective config, read once at load. `reload-config!` re-reads
    the chain (operator seam — edit a file, reload, no restart)."}
@@ -193,49 +282,77 @@
         {:keys [descriptor]} (model-target model-kw entry)]
     (build-backend descriptor)))
 
-;; ── preamble (λ prompt — generic; NO baked-in boot seed) ──────────────────────
-;; The preamble is CONFIG, not architecture: a string glued to the top of the
-;; system prompt. This tool ships only a bland generic default; a machine's own
-;; boot seed (e.g. nucleus) lives in that machine's config file. DIVERGENCE #3
-;; from anima (which hardwires its vendored nucleus gene): with-preamble is now
-;; (preamble, system), and resolve-preamble walks a config inheritance chain.
+;; ── the prompt stack (λ prompt — generic; NO baked-in prompt text) ────────────
+;; Every prompt layer is CONFIG, not architecture (D7 RATIFIED 2026-08-28):
+;; :preamble (boot seed) ⊕ :system-prompt (system voice) ⊕ :orientation
+;; (environment template) all resolve through ONE inheritance chain and can be
+;; replaced wholesale — an embedding host (anima) swaps the entire stack for
+;; nucleus lambda-notation prompts. This tool ships only bland generic
+;; defaults (builtin-defaults, the bottom of every chain).
 
 (defn- expand-home [path]
   (if (str/starts-with? (str path) "~")
     (str (System/getProperty "user.home") (subs (str path) 1))
     (str path)))
 
-(defn- render-preamble
-  "A preamble VALUE → text. string ≡ literal; {:file path} ≡ slurped plain
-   text (~ expands). Anything else fails loud — a typo'd shape silently
-   dropping the boot layer would be the worst failure mode."
-  [v]
+(defn- render-prompt
+  "A prompt-layer VALUE → text. string ≡ literal; {:file path} ≡ slurped
+   plain text (~ expands — where a host's nucleus lambda-notation prompt
+   file lives). Anything else fails loud — a typo'd shape silently dropping
+   a prompt layer would be the worst failure mode."
+  [layer v]
   (cond
-    (string? v)            v
+    (string? v)              v
     (and (map? v) (:file v)) (str/trimr (slurp (expand-home (:file v))))
-    :else (throw (ex-info "Unrenderable :preamble value — want string or {:file path}"
-                          {:value v}))))
+    :else (throw (ex-info (str "Unrenderable " layer " value — want string or {:file path}")
+                          {:layer layer :value v}))))
+
+(defn- resolve-chained
+  "THE prompt-stack resolver (D7 RATIFIED: one chain, one mental model —
+   every layer of the stack resolves identically, so an embedding host can
+   replace the WHOLE stack from config). Walk
+
+     session `sk`  >  model `mk`  >  provider `pk`  >  config root `rk`
+
+   First-PRESENT wins (a level REPLACES, never concatenates). Absent key ≡
+   inherit upward; present nil ∨ `false` ∨ blank ≡ explicitly NONE (stops
+   the chain). Returns the rendered string or nil."
+  [{:keys [model] :as session-config} sk mk pk rk]
+  (let [cfg  (config)
+        m    (get-in cfg [:models model])
+        p    (get-in cfg [:providers (:model/provider m)])
+        pick (fn [src k] (when (and src (contains? src k)) [(get src k)]))
+        [v]  (or (pick session-config sk)
+                 (pick m mk)
+                 (pick p pk)
+                 (pick cfg rk))]
+    (when-not (or (nil? v) (false? v) (and (string? v) (str/blank? v)))
+      (render-prompt rk v))))
 
 (defn resolve-preamble
-  "Resolve the preamble for a SESSION config through the inheritance chain:
+  "The boot-seed layer: session :preamble > model :model/preamble >
+   provider :provider/preamble > root :preamble. Rendered string or nil."
+  [session-config]
+  (resolve-chained session-config :preamble :model/preamble :provider/preamble :preamble))
 
-     session :preamble  >  model :model/preamble  >  provider :provider/preamble
-     >  config top-level :preamble
+(defn resolve-system-prompt
+  "The system-voice layer: session :system (the existing session knob) >
+   model :model/system-prompt > provider :provider/system-prompt > root
+   :system-prompt. Replaces completion's baked \"You are a precise
+   assistant.\" (that text now lives in builtin-defaults, bottom of the
+   chain). Rendered string or nil."
+  [session-config]
+  (resolve-chained session-config :system :model/system-prompt :provider/system-prompt :system-prompt))
 
-   First-PRESENT wins (no concatenation — a level REPLACES the boot text).
-   Absent key ≡ inherit upward; present `false` ∨ blank ≡ explicitly NONE
-   (stops the chain). Returns the rendered string or nil."
-  [{:keys [model] :as session-config}]
-  (let [cfg   (config)
-        m     (get-in cfg [:models model])
-        p     (get-in cfg [:providers (:model/provider m)])
-        pick  (fn [src k] (when (and src (contains? src k)) [(get src k)]))
-        [v]   (or (pick session-config :preamble)
-                  (pick m :model/preamble)
-                  (pick p :provider/preamble)
-                  (pick cfg :preamble))]
-    (when-not (or (nil? v) (false? v) (and (string? v) (str/blank? v)))
-      (render-preamble v))))
+(defn resolve-orientation
+  "The environment-orientation layer ({slug} template, applied by
+   completion/with-tools-system iff :tools rides the wire): session
+   :orientation > model :model/orientation > provider :provider/orientation
+   > root :orientation. Replaces completion's `tools-system` def (the
+   template now lives in builtin-defaults, bottom of the chain). Rendered
+   string or nil."
+  [session-config]
+  (resolve-chained session-config :orientation :model/orientation :provider/orientation :orientation))
 
 (defn with-preamble
   "λ prompt: glue `preamble` to the top of `system`. GENERIC — no knowledge of

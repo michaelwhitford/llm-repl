@@ -121,21 +121,39 @@
     (.waitFor proc)
     (->> (str/split-lines out) (remove str/blank?) last)))
 
+(defn spawn-cmd
+  "The verified nohup incantation that detaches a daemon (see ns docstring),
+   built from `cfg-path` ≡ the `babashka.config` system property. THE JVM
+   GUARD (D6/D7): under JVM Clojure that property does not exist — no
+   convention names bb.edn from a foreign runtime — so this FAILS LOUD with
+   instructions instead of the v0.2.0 NPE. The JVM twin attaches to an
+   existing daemon; it never spawns one. Public for the twin suite
+   (memories/bb-jvm-private-var-twin-trap)."
+  [cfg-path pdir]
+  (when-not cfg-path
+    (throw (ex-info (str "llm-repl: spawning the local daemon requires the bb runtime "
+                         "(no `babashka.config` system property under the JVM). "
+                         "Start it with `bb start` (or run a headless core with "
+                         "`bb nrepl`), then attach — the JVM twin attaches to an "
+                         "existing daemon; it never spawns one.")
+                    {:runtime :jvm :fix ["bb start" "bb nrepl"]})))
+  (str "nohup bb --config " cfg-path
+       " --deps-root " (.getParent (io/file cfg-path))
+       " nrepl >" (.getPath (log-file pdir)) " 2>&1 & echo $!"))
+
 (defn spawn!
   "Spawn a DETACHED local daemon rooted at `pdir` (its CWD). Reinvokes the SAME
    bb.edn (`babashka.config`; deps-root ≡ its parent) `nrepl` headless task via
-   the verified nohup incantation, captures the pid, waits until the nREPL port
-   serves, then WRITES daemon.edn (spawner-owned). Returns the live state
-   {:pid :port :cwd :started-at}. Throws with the log path if it never becomes
-   ready (or dies) within `timeout-ms`."
+   the verified nohup incantation (`spawn-cmd` — fails loud under JVM), captures
+   the pid, waits until the nREPL port serves, then WRITES daemon.edn
+   (spawner-owned). Returns the live state {:pid :port :cwd :started-at}.
+   Throws with the log path if it never becomes ready (or dies) within
+   `timeout-ms`."
   ([pdir] (spawn! pdir 20000))
   ([pdir timeout-ms]
-   (let [pdir      (.getAbsolutePath (io/file pdir))
-         cfg       (System/getProperty "babashka.config")
-         deps-root (.getParent (io/file cfg))]
+   (let [pdir (.getAbsolutePath (io/file pdir))]
      (.mkdirs (state-dir pdir))
-     (let [cmd (str "nohup bb --config " cfg " --deps-root " deps-root
-                    " nrepl >" (.getPath (log-file pdir)) " 2>&1 & echo $!")
+     (let [cmd (spawn-cmd (System/getProperty "babashka.config") pdir)
            pid (try (Long/parseLong (run-sh pdir cmd))
                     (catch Exception e
                       (throw (ex-info "daemon spawn failed to yield a pid"
