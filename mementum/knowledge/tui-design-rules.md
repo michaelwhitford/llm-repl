@@ -67,48 +67,35 @@ exactly ONE session:
 | **focused only** | `[:config :model]`, `:tape` (the message vector), its count | `title-line`, `frame` (tape pane), `input-line` |
 
 Everything registry-WIDE is edges ∧ counts. Only the pane you are looking at
-needs bodies. And `registry/sessions-list` — "a compact index of live
-sessions, no message bodies" — already returns precisely the wide set
-(`:slug :model :depth :turns :forked-from :forked-at`; `:depth` IS the tape
-count). **The projection was written and never put on the wire.**
+needs bodies. A compact projection with exactly that shape already existed —
+`us.whitford.llm-repl/sessions-list`, the `^:manual` api command (NOT
+`registry/sessions-list`; this page said so for one day and it was wrong) —
+and it was never put on the wire. The client fetched `@registry/sessions*`
+WHOLE, tapes included, on every version bump: 99 KB at 50 sessions, 594 KB at
+300, against an index 27× smaller.
 
-The client instead fetches `@registry/sessions*` WHOLE, tapes included, on
-every version bump (`client.clj:183`). Measured on the live daemon, synthetic
-sessions carrying a real 6-message tape:
+**BUILT 2026-08-28.** The projection moved to `registry/index` (one
+definition; `sessions-list` is now a re-flattening of it), the wire carries
+`registry/view` — index ⊕ the focused tape from one deref — and `frame` took
+the signature change rather than a client-side fake registry map:
 
+```clojure
+(frame index tape state theme w h)   ; tape nil ≡ not fetched, [] ≡ empty
 ```
-n=10   19 KB    n=50   99 KB    n=300  594 KB   (pr-str 21ms + read 14ms)
-index  741 B          3.7 KB           22 KB    ← 27× smaller, CONSTANT ratio
-```
 
-Real sessions carry longer tapes, so those are FLOORS. At 50 sessions —
-reachable today with a couple of `ab!` fans — it is already ~99 KB and ~6 ms
-on every refresh. The cost is O(all state) per change when an O(index)
-projection exists.
+`tree-lines`/`sessions-line`/`title-line`/`input-line` now read `:depth` and
+`:model` off the index; `dfs-order`/`children-of` were already edges-only.
+Measured after: 7.6 KB at n=50, 36.0 KB at n=300 (17.3×), `pr-str` 19ms → 1ms.
 
-Blast radius is small: `registry` has ONE implementation (`RemoteCore`
-`client.clj:206` — the TUI always goes over nREPL, `--plain` never calls
-`frame`), and three consumers, two of which want only `keys`
-(`main.clj:236,292,329`; `term.clj:74`). All of it is INTERNAL per
-library-contract (`client` `tui.frame` `tui.term` `main` "may churn without
-notice").
-
-**The rule this buys, which matters more than the bytes:**
+**Payload, sockets, focus semantics and the push verdict now live in
+[wire-protocol](wire-protocol.md)** — this page keeps the audit that
+motivated it and the rule it bought:
 
 > Split the PAYLOAD, never the round-trip.
 
-Index and focused tape must arrive from ONE eval. Two fetches are two points
-in time: the tree renders depth N while the tape pane renders N−1 messages —
-a torn read that looks like a rendering bug and isn't. The wire is an eval,
-so `(let [...] {:index … :tape …})` keeps atomicity for free. Splitting the
-round-trip would trade a size problem for a consistency problem.
-
-Honest cost when this is built: `frame`'s signature grows a tape arg
-(`(frame index tape state theme w h)`), ~5 accessor sites move from
-`(count (:tape s))`/`get-in [:config :model]` to `:depth`/`:model`, and the
-`frame_test` fixture (raw reg map, `frame_test.clj:157-162`) changes with it.
-The tempting alternative — reconstituting a fake registry map client-side to
-keep the tests green — keeps the shape a lie. Take the signature change.
+Index and focused tape arrive from ONE eval. Two fetches are two points in
+time: the tree renders depth N while the tape pane renders N−1 messages — a
+torn read that looks like a rendering bug and isn't.
 
 ## Mechanics worth keeping (escapement lineage)
 
