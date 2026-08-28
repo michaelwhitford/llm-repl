@@ -97,7 +97,10 @@
  ;; ON by default for the daemon; --plain (the debug hatch) never traces.
  ;; The dir self-writes a .gitignore: captured requests carry the resolved
  ;; preamble, so traces must never reach a repo.
- ;; :trace {:enabled? true :dir ".llm-repl"}
+ ;; :ring-bytes caps the in-memory send-ring (EVERY physical send, incl.
+ ;; tapeless bounce!/trampoline! successes — memory-only by design; query
+ ;; via eval: trace/sends, trace/ring-stats). Default 8MiB; 0/false ≡ off.
+ ;; :trace {:enabled? true :dir ".llm-repl" :ring-bytes 8388608}
 
  ;; nREPL attach port. 0 picks a free port. Either way the chosen port is
  ;; written to .nrepl-port so editors and clients can auto-connect.

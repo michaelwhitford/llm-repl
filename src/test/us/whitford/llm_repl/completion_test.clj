@@ -41,8 +41,10 @@
   (registry/reset-events!)
   (reset! registry/version* 0)
   (tp/register! tools/tool-registry* (->EchoTool))
+  (trace/ring-reset!)
   (f)
-  (trace/close!))
+  (trace/close!)
+  (trace/ring-reset!))
 
 (use-fixtures :each reset-fixture)
 
@@ -469,3 +471,41 @@
       (is (some #(and (= :tool (:kind %))
                       (= "nodes/s/1/turns/0/tool-results/tu1.edn" (:io/ref %)))
                 @registry/events*)))))
+
+;; ── the send-ring rides send-traced! (design § build decisions 7) ─────────
+
+(deftest send-ring-records-success-test
+  (let [requests (atom [])
+        stub     (stub-backend (atom [(text-response "hi")]) requests)]
+    (with-redefs [completion/session-backend (fn [_ _] stub)]
+      ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+       (tape/append-user [] "q")))
+    (let [[e] (trace/sends)]
+      (testing "the ✓ send landed: slug, the request that rode the wire, response"
+        (is (= :s (:slug e)))
+        (is (true? (:ok? e)))
+        (is (= (first @requests) (:request e)))
+        (is (= "hi" (-> e :response :content first :text)))))))
+
+(deftest send-ring-records-tapeless-success-test
+  (let [stub (stub-backend (atom [(text-response "probe")]) (atom []))]
+    (with-redefs [completion/session-backend (fn [_ _] stub)]
+      (binding [trace/*capture?* false]        ; ≡ inside bounce!/trampoline!
+        ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+         (tape/append-user [] "q")))))
+  (testing "the tapeless ✓ path records — THE hole this decision closes"
+    (is (= [true] (mapv :ok? (trace/sends))))))
+
+(deftest send-ring-records-failure-test
+  (let [boom (boom-backend (atom []) (ex-info "HTTP 400" {:status 400}))]
+    (with-redefs [completion/session-backend (fn [_ _] boom)]
+      (is (thrown? Exception
+                   ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+                    (tape/append-user [] "q"))))))
+  (let [[e] (trace/sends)]
+    (testing "the ✗ send landed as data"
+      (is (false? (:ok? e)))
+      (is (= "HTTP 400" (:error e))))
+    (testing "tracing OFF ⇒ no failure blob ⇒ ref ABSENT (a ref points at
+              its own payload or is absent — never invented)"
+      (is (not (contains? e :io/ref))))))

@@ -31,7 +31,13 @@
    decisions): `bounce!`/`trampoline!` bind it false around their sends —
    non-committing completions have NO assistant tape index (N bounces off one
    prefix would collide on the same turn number), so their trace stays the
-   receipt stream. Committed turns (eval!, battery, ab! arms) capture fully."
+   receipt stream. Committed turns (eval!, battery, ab! arms) capture fully.
+
+   The SEND-RING (design § build decisions 7, ratified memory-only) records
+   every physical send REGARDLESS — ✓ ∧ ✗, tapeless or not, `*capture?*`
+   irrelevant: byte-capped, in-memory, deliberately non-durable (crash loses
+   nothing that matters: ✗ blobs, receipts, tapes are all already on disk).
+   `sends` ∧ `ring-stats` are the query surface; eval is the query engine."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
@@ -233,6 +239,95 @@
         {:io/ref (node-file-locator slug visit file)})
       (catch Throwable t2 (trace-fail! (str "failure " slug) t2)))))
 
+;; ── the send-ring (design § build decisions 7 — memory-only, RATIFIED) ─────
+
+(def default-ring-bytes
+  "Ring high-water mark. Sized off the measurement that killed the cost
+   objection: 300 bounces ≡ 2.9MB worst case (8KB replies) — 8MiB holds
+   several such campaigns and is noise for a daemon heap."
+  (* 8 1024 1024))
+
+(defonce ^{:doc "The send-ring: every physical send, memory-only, byte-capped
+   — {:cap n :bytes n :entries [entry …]} oldest-first. INDEPENDENT of
+   `state*`/`*capture?*`: the ring is not persistence (crash-loss ratified
+   deliberate), so the colliding-turns rationale that gates blob capture does
+   not apply. defonce: a reload must not lose the audit window."}
+  ring*
+  (atom {:cap default-ring-bytes :bytes 0 :entries []}))
+
+(defn ring-trim
+  "Pure: evict oldest-first until within :cap — but the NEWEST entry always
+   survives even oversized (record-always beats the bound by one entry;
+   cap ≡ high-water mark, not a hard ceiling). cap ≤ 0 ≡ off: empty."
+  [{:keys [cap] :as ring}]
+  (if (pos? cap)
+    (loop [{:keys [entries bytes] :as r} ring]
+      (if (and (> bytes cap) (> (count entries) 1))
+        (recur (-> r
+                   (assoc :entries (into [] (rest entries)))
+                   (update :bytes - (:bytes (first entries)))))
+        r))
+    (assoc ring :entries [] :bytes 0)))
+
+(defn ring-conj
+  "Pure: append `entry` (must carry :bytes) then trim."
+  [ring entry]
+  (ring-trim (-> ring
+                 (update :entries conj entry)
+                 (update :bytes + (:bytes entry)))))
+
+(defn ring-record!
+  "Record one physical send — ✓ ∧ ✗ alike, tapeless or not (the ONE feed,
+   from completion/send-traced!). `outcome` ≡ {:response r} | {:error msg
+   ⊕ :io/ref failure-blob} — a ✗ entry's ref points at ITS OWN payload or
+   is absent (the upstream trap NOT copied: never a ref to a different
+   send's blob). Entry :bytes ≈ (count (pr-str entry)) — chars, close
+   enough for a high-water mark. Never throws (receipt on failure)."
+  [slug request outcome]
+  (try
+    (when (pos? (:cap @ring*))
+      (let [entry (merge {:at      (System/currentTimeMillis)
+                          :slug    slug
+                          :ok?     (not (contains? outcome :error))
+                          :request request}
+                         outcome)
+            entry (assoc entry :bytes (count (pr-str entry)))]
+        (swap! ring* ring-conj entry)))
+    nil
+    (catch Throwable t (trace-fail! (str "ring " slug) t))))
+
+(defn sends
+  "The query surface (eval IS the query engine — no datalog under bb):
+   newest-first entries, all of them or the last `n`."
+  ([] (sends nil))
+  ([n]
+   (let [es (or (rseq (:entries @ring*)) ())]
+     (vec (if n (take n es) es)))))
+
+(defn ring-stats
+  "One glance: {:entries :bytes :cap :oldest-at :newest-at}."
+  []
+  (let [{:keys [entries bytes cap]} @ring*]
+    {:entries   (count entries)
+     :bytes     bytes
+     :cap       cap
+     :oldest-at (:at (first entries))
+     :newest-at (:at (peek entries))}))
+
+(defn set-ring-cap!
+  "Adjust the cap live (config :trace :ring-bytes at boot, or eval-time).
+   `0`/`false`/nil ≡ off — clears the ring."
+  [n]
+  (let [cap (if (number? n) (long n) 0)]
+    (swap! ring* #(ring-trim (assoc % :cap cap)))
+    nil))
+
+(defn ring-reset!
+  "Empty the ring, restore the default cap — the test fixture seam."
+  []
+  (reset! ring* {:cap default-ring-bytes :bytes 0 :entries []})
+  nil)
+
 ;; ── transcript (the event tap) ─────────────────────────────────────────────
 
 (defn receipt!
@@ -287,6 +382,8 @@
    where `degraded` is owed (same posture as recovery's receipt-and-skip)."
   [config]
   (let [{on? :enabled? dir :dir :or {on? true dir ".llm-repl"}} (:trace config)]
+    (when (contains? (:trace config) :ring-bytes)
+      (set-ring-cap! (:ring-bytes (:trace config))))
     (when on?
       (try
         (let [work (io/file dir)

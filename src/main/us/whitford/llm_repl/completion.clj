@@ -146,7 +146,10 @@
 
 (defn- send-traced!
   "The ONE send seam — dispatch `request` at `backend`, await, return the
-   Response. Every physical send in this ns goes through here.
+   Response. Every physical send in this ns goes through here — and every
+   send lands in the send-ring, ✓ ∧ ✗ alike (`trace/ring-record!`,
+   memory-only, design § build decisions 7): the tapeless drivers' ✓ path
+   audit window, never a throw into this path.
 
    On failure: capture the request ⊕ the error (`trace/failure!` — the one
    capture the tapeless drivers still make, design § ratified decisions 1 as
@@ -160,11 +163,17 @@
    untouched — the seam adds nothing to the disabled path."
   [backend slug request]
   (try
-    (p/await! (proto/send-turn backend request))
+    (let [response (p/await! (proto/send-turn backend request))]
+      (trace/ring-record! slug request {:response response})
+      response)
     (catch Throwable t
-      (if-let [ref (:io/ref (trace/failure! slug request t))]
-        (throw (ex-info (ex-message t) (assoc (ex-data t) :trace/ref ref) t))
-        (throw t)))))
+      (let [ref (:io/ref (trace/failure! slug request t))]
+        (trace/ring-record! slug request
+                            (cond-> {:error (or (ex-message t) (str (type t)))}
+                              ref (assoc :io/ref ref)))
+        (if ref
+          (throw (ex-info (ex-message t) (assoc (ex-data t) :trace/ref ref) t))
+          (throw t))))))
 
 (defn plain-complete
   "config ⊕ slug → (fn [tape] → reply-text): build the request, send it at the

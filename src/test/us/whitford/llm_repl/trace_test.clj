@@ -19,11 +19,13 @@
    defonce'd globals; a leaked install would couple tests."
   [f]
   (trace/close!)
+  (trace/ring-reset!)
   (reset! registry/sessions* {})
   (registry/reset-events!)
   (reset! registry/version* 0)
   (f)
-  (trace/close!))
+  (trace/close!)
+  (trace/ring-reset!))
 
 (use-fixtures :each clean-fixture)
 
@@ -320,3 +322,65 @@
       (is (nil? (eproto/read-artifact store "main" "nodes/s/1/tape.edn"))))
     (testing "idempotent"
       (is (nil? (trace/close!))))))
+
+;; ── the send-ring (design § build decisions 7 — memory-only, RATIFIED) ────
+
+(defn- entry [id bytes] {:id id :bytes bytes})
+
+(deftest ring-trim-pure-test
+  (testing "evicts oldest-first until within cap"
+    (is (= [:b :c]
+           (mapv :id (:entries (trace/ring-conj
+                                {:cap 100 :bytes 90 :entries [(entry :a 50) (entry :b 40)]}
+                                (entry :c 30)))))))
+  (testing "bytes track evictions"
+    (is (= 70 (:bytes (trace/ring-conj
+                       {:cap 100 :bytes 90 :entries [(entry :a 50) (entry :b 40)]}
+                       (entry :c 30))))))
+  (testing "the NEWEST entry survives even oversized (cap ≡ high-water mark)"
+    (let [r (trace/ring-conj {:cap 100 :bytes 0 :entries []} (entry :big 500))]
+      (is (= [:big] (mapv :id (:entries r))))
+      (is (= 500 (:bytes r)))))
+  (testing "cap ≤ 0 ≡ off — clears"
+    (is (= {:cap 0 :bytes 0 :entries []}
+           (trace/ring-trim {:cap 0 :bytes 120 :entries [(entry :a 120)]})))))
+
+(deftest ring-record-and-query-test
+  (trace/ring-record! :s1 {:messages [:a]} {:response {:text "hi"}})
+  (trace/ring-record! :s2 {:messages [:b]} {:error "HTTP 400"
+                                            :io/ref "nodes/s2/1/failures/1-1.edn"})
+  (testing "sends is newest-first; ✓ ∧ ✗ both recorded"
+    (is (= [[:s2 false] [:s1 true]] (mapv (juxt :slug :ok?) (trace/sends))))
+    (is (= [:s2] (mapv :slug (trace/sends 1)))))
+  (testing "a ✗ entry's ref points at its own payload"
+    (is (= "nodes/s2/1/failures/1-1.edn" (:io/ref (first (trace/sends))))))
+  (testing "stats"
+    (let [{:keys [entries bytes cap oldest-at newest-at]} (trace/ring-stats)]
+      (is (= 2 entries))
+      (is (pos? bytes))
+      (is (= trace/default-ring-bytes cap))
+      (is (<= oldest-at newest-at))))
+  (testing "the ring records with trace DISABLED and *capture?* bound false —
+            independence is the point (tapeless ✓ capture)"
+    (is (not (trace/enabled?)))
+    (binding [trace/*capture?* false]
+      (trace/ring-record! :s3 {} {:response :r}))
+    (is (= :s3 (:slug (first (trace/sends)))))))
+
+(deftest ring-cap-knob-test
+  (trace/ring-record! :s1 {} {:response :r})
+  (testing "set-ring-cap! 0 clears ∧ disables recording"
+    (trace/set-ring-cap! 0)
+    (is (= [] (trace/sends)))
+    (trace/ring-record! :s2 {} {:response :r})
+    (is (= [] (trace/sends))))
+  (testing "false ≡ off"
+    (trace/set-ring-cap! false)
+    (is (zero? (:cap (trace/ring-stats)))))
+  (testing "init! applies :ring-bytes even when tracing is disabled"
+    (trace/init! {:trace {:enabled? false :ring-bytes 1234}})
+    (is (= 1234 (:cap (trace/ring-stats))))
+    (is (not (trace/enabled?))))
+  (testing "ring-reset! restores the default"
+    (trace/ring-reset!)
+    (is (= trace/default-ring-bytes (:cap (trace/ring-stats))))))
