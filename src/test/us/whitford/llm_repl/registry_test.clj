@@ -118,6 +118,57 @@
 (deftest event-line-nil-slug-elided-test
   (is (= "reset-all!" (registry/event-line {:kind :reset-all!}))))
 
+;; ── index / view (the wire's payload shapes) ──────────────────────────────
+
+(def ^:private two-sessions
+  {:parent {:slug :parent :tape [{:role :user :text "BODY-ALPHA"}
+                                 {:role :assistant :text "BODY-BETA"}]
+            :config {:model "m1" :preamble? true} :turns 1}
+   :child  {:slug :child :tape [{:role :user :text "BODY-GAMMA"}]
+            :config {:model "m2"} :turns 0
+            :forked-from :parent :forked-at 2}})
+
+(deftest index-drops-bodies-keeps-edges-test
+  (testing "message bodies are GONE; edges ∧ counts survive"
+    (let [idx (registry/index two-sessions)]
+      (is (= #{:parent :child} (set (keys idx))) "keyed by slug")
+      (is (= {:slug :parent :model "m1" :preamble? true :depth 2 :turns 1
+              :forked-from nil :forked-at nil}
+             (:parent idx)))
+      (is (= {:slug :child :model "m2" :preamble? nil :depth 1 :turns 0
+              :forked-from :parent :forked-at 2}
+             (:child idx)))
+      (is (not-any? #(contains? % :tape) (vals idx)) "no :tape key at all")
+      (is (not (re-find #"BODY-" (pr-str idx))) "no message text anywhere in the payload"))))
+
+(deftest index-is-pure-and-smaller-test
+  (testing "pure fn of its argument — never derefs sessions*"
+    (reset! registry/sessions* {})
+    (is (= 2 (count (registry/index two-sessions)))))
+  (testing "the projection is strictly smaller on the wire (the whole point)"
+    (is (< (count (pr-str (registry/index two-sessions)))
+           (count (pr-str two-sessions))))))
+
+(deftest view-splits-payload-not-round-trip-test
+  (reset! registry/sessions* two-sessions)
+  (testing "index ⊕ the FOCUSED tape only, from ONE deref"
+    (let [v (registry/view :parent)]
+      (is (= #{:index :slug :tape} (set (keys v))))
+      (is (= :parent (:slug v)))
+      (is (= [{:role :user :text "BODY-ALPHA"} {:role :assistant :text "BODY-BETA"}] (:tape v)))
+      (is (= 1 (:depth (get-in v [:index :child]))) "other sessions ride as counts")
+      (is (nil? (get-in v [:index :child :tape])))))
+  (testing "index depth ∧ focused tape count agree — a torn read is unreachable"
+    (let [v (registry/view :parent)]
+      (is (= (count (:tape v)) (get-in v [:index :parent :depth])))))
+  (testing "unknown focus ≡ :tape nil (NOT-A-TAPE), index still whole"
+    (let [v (registry/view :nope)]
+      (is (nil? (:tape v)))
+      (is (= 2 (count (:index v))))))
+  (testing "an open-but-empty session ≡ [] — distinct from nil"
+    (reset! registry/sessions* {:fresh {:slug :fresh :tape [] :config {} :turns 0}})
+    (is (= [] (:tape (registry/view :fresh))))))
+
 ;; ── events-since ──────────────────────────────────────────────────────────
 
 (deftest events-since-test

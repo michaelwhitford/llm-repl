@@ -165,6 +165,55 @@
       (try (tap old new) (catch Throwable _ nil)))
     [old new]))
 
+;; ── projections (the wire's payload shapes) ───────────────────────────────
+
+(defn index
+  "The registry PROJECTION every registry-WIDE consumer actually needs:
+   {slug → {:slug :model :preamble? :depth :turns :forked-from :forked-at}} —
+   edges ∧ counts, NO message bodies. Pure fn of a `reg` map (never derefs;
+   `view` and the api's `sessions-list` both build on this ONE definition).
+
+   Audited 2026-08-28 (knowledge/tui-design-rules.md): the TUI needs full
+   tape data for exactly ONE session — the focused one — while `tree-lines`,
+   `sessions-line` and the fork-edge walks want only what is here. The client
+   nonetheless fetched `@sessions*` WHOLE on every version bump: 99KB at 50
+   sessions, 594KB at 300, against a 27×-smaller index at a CONSTANT ratio.
+   Cost is O(all state) per change where an O(index) answer exists.
+
+   `:depth` ≡ `(count :tape)` — the ONLY thing this ns reads about a tape,
+   and it still never looks INSIDE one (ns docstring's invariant holds).
+   Keyed by slug (not a vector) because every consumer looks sessions up by
+   slug; `sessions-list` re-flattens for the human/model surface."
+  [reg]
+  (reduce-kv (fn [m slug s]
+               (assoc m slug {:slug        slug
+                              :model       (get-in s [:config :model])
+                              :preamble?   (get-in s [:config :preamble?])
+                              :depth       (count (:tape s))
+                              :turns       (:turns s)
+                              :forked-from (:forked-from s)
+                              :forked-at   (:forked-at s)}))
+             {} reg))
+
+(defn view
+  "THE view payload: `{:index {slug → …} :slug focus :tape [messages]}` — the
+   whole-registry index ⊕ the message bodies of the FOCUSED session only.
+   `focus` is the client's LOCAL notion of which pane it is looking at (focus
+   never lives in the registry — attached clients each have their own); an
+   unknown/absent focus yields `:tape nil`, which surfaces read as
+   NOT-A-TAPE, distinct from `[]` ≡ an open session with no turns yet.
+
+   ONE deref of `sessions*` feeds both halves, which is the whole point:
+   SPLIT THE PAYLOAD, NEVER THE ROUND-TRIP. Two fetches would be two points
+   in time — the tree rendering depth N beside a tape of N−1 messages, a torn
+   read that looks like a rendering bug and isn't. Atomicity here is free;
+   over the wire it would not be."
+  [focus]
+  (let [reg @sessions*]
+    {:index (index reg)
+     :slug  focus
+     :tape  (:tape (get reg focus))}))
+
 ;; ── events ────────────────────────────────────────────────────────────────
 
 (defn event!

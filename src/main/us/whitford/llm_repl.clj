@@ -200,17 +200,12 @@
   (get @registry/sessions* slug))
 
 (defn ^{:manual "List all sessions: model, depth, turns, fork parent."} sessions-list
-  "A compact index of live sessions (λ glass) — no message bodies."
+  "A compact index of live sessions (λ glass) — no message bodies. The SHAPE
+   is `registry/index`'s (ONE definition of the projection, shared with the
+   TUI's wire payload — λ dep: extract, never duplicate); this surface only
+   flattens the slug-keyed map to the vector humans and models read."
   []
-  (mapv (fn [[slug s]]
-          {:slug        slug
-           :model       (get-in s [:config :model])
-           :preamble?   (get-in s [:config :preamble?])
-           :depth       (count (:tape s))
-           :turns       (:turns s)
-           :forked-from (:forked-from s)
-           :forked-at   (:forked-at s)})
-        @registry/sessions*))
+  (vec (vals (registry/index @registry/sessions*))))
 
 (defonce ^{:doc "Namespaces the manual compiles from — an OPEN SLOT (λ extend):
    a surface with its own operator commands registers its ns here at load

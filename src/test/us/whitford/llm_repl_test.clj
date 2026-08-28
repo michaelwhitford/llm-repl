@@ -160,6 +160,23 @@
   (is (= 1 (count (filter #(= :open! (:kind %)) @registry/events*)))
       "only ONE open! event fired — the reopen was a merge, not a creation"))
 
+(deftest sessions-list-shape-lock-test
+  (testing "PUBLIC surface (library-contract): a VECTOR of compact maps, no
+            message bodies — the shape is registry/index's, flattened here,
+            and it must not drift when the TUI's wire payload changes"
+    (repl/open! :sl {:model "m1"})
+    (repl/eval! :sl "hello" {:complete-fn stub-complete})
+    (let [[s :as all] (repl/sessions-list)]
+      (is (vector? all))
+      (is (= 1 (count all)))
+      (is (= #{:slug :model :preamble? :depth :turns :forked-from :forked-at}
+             (set (keys s))))
+      (is (= [:sl "m1" 2 1] [(:slug s) (:model s) (:depth s) (:turns s)]))
+      (is (not (str/includes? (pr-str all) "hello")) "no message text on this surface")))
+  (testing "≡ the vals of registry/index — ONE definition of the projection"
+    (is (= (vec (vals (registry/index @registry/sessions*)))
+           (repl/sessions-list)))))
+
 (deftest drop!-and-reset-all!-test
   (repl/open! :d1)
   (testing "drop! reports existence"
