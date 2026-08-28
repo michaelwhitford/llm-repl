@@ -25,7 +25,7 @@
    ;; main's own code (reads qualified) — full short-name rewire is step 6.
    [us.whitford.llm-repl :as core :refer :all]
    [us.whitford.llm-repl.roster :as roster]
-   [us.whitford.llm-repl.tui :as tui]))
+   [us.whitford.llm-repl.tui.term :as tui]))
 
 (defonce ^{:doc "The prompt loop's current session slug — loop-local UI state,
    NOT registry state (attached clients have their own notion of focus)."}

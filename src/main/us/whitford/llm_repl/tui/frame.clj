@@ -1,41 +1,29 @@
-(ns us.whitford.llm-repl.tui
-  "The TUI: llm-repl's human surface, built on escapement's PURE terminal
-   primitives (escapement.tui.theme ∧ escapement.tui.compositor — both
-   bb/SCI-safe, zero coupling to escapement's runner) with the two PROVEN
-   patterns from escapement.tui COPIED, not depended on (that ns is hardwired
-   to escapement's event vocabulary; its decoder is private):
+(ns us.whitford.llm-repl.tui.frame
+  "The TUI's PURE half (v0.3.0 step 6 — D5: the testable cut is FILE
+   topology, not an in-file comment divider). Everything here is a pure
+   function of (registry-snapshot ⊕ ui-state ⊕ theme ⊕ w/h) → strings, or
+   (editor-state ⊕ key) → editor-state′, or (byte-reader) → logical key.
+   Headless tests exercise all of it without a terminal (D6 names this
+   suite); `tui.term` is the ONLY io consumer.
 
-     render loop ≡ one state atom ⊕ :render-dirty flag ⊕ ~30fps daemon ticker
-       — ANY thread swaps state + flips the flag; ONE thread repaints.
-       The registry watch (wire ns) rides this: an attached nREPL client's
-       eval! appears in the terminal within ~33ms, no locking, no push.
-     input       ≡ JLine raw mode ⊕ a pure byte→logical-key decoder
-       — ours parses CSI params fully, which buys BRACKETED PASTE
-       (ESC[200~ … ESC[201~): a multi-line paste lands as ONE turn
-       (the plain loop's known friction), a capability escapement's
-       decoder doesn't have.
+   Built on escapement's PURE terminal primitives (escapement.tui.theme ∧
+   escapement.tui.compositor — both bb/SCI-safe, zero coupling to
+   escapement's runner). The byte→key decoder parses CSI params FULLY, which
+   buys BRACKETED PASTE (ESC[200~ … ESC[201~): a multi-line paste lands as
+   ONE turn — a capability escapement's (private) decoder doesn't have.
 
-   Screen (single column — split view is a later increment):
-     ┌ llm-repl · slug · model · nREPL :port ──────────── ⇅ n/m ┐
-     │ tape pane: user/assistant turns + system events, wrapped  │
-     ├───────────────────────────────────────────────────────────┤
-     sessions: [scratch·2] probe·0 twin·4↰scratch
-     scratch[2]> input buffer_
-
-   PURITY SEAM (the testable cut): everything above the impl divider is a
-   pure function of (registry-snapshot ⊕ ui-state ⊕ theme ⊕ w/h) → strings,
-   or (editor-state ⊕ key) → editor-state′. Headless tests exercise these
-   without a terminal; the impl half only moves bytes."
+   Screen (wide ≥70 cols — narrow falls back to single pane ⊕ sessions strip):
+     ┌ tree ─────┐┌ llm-repl · slug · model · nREPL :port ──── ⇅ n/m ┐
+     │ the map   ││ tape pane: user/assistant turns, wrapped          │
+     └───────────┘└───────────────────────────────────────────────────┘
+     scratch[2]> input buffer_"
   (:require
    [clojure.string :as str]
    [escapement.tui.compositor :as cmp]
    [escapement.tui.theme :as theme]
-   [us.whitford.llm-repl.registry :as registry])
-  (:import
-   (org.jline.terminal Terminal TerminalBuilder)
-   (org.jline.utils NonBlockingReader)))
+   [us.whitford.llm-repl.registry :as registry]))
 
-;; ── pure: text shaping ────────────────────────────────────────────────────────
+;; ── text shaping ──────────────────────────────────────────────────────────────
 
 (defn wrap-text
   "Greedy-wrap `s` to `w` display columns; newlines respected. Always returns
@@ -56,7 +44,7 @@
                           (conj out cur))))))
           (str/split-lines (str s)))))
 
-;; ── pure: pane content ────────────────────────────────────────────────────────
+;; ── pane content ──────────────────────────────────────────────────────────────
 
 (def role-label {:user "you ›" :assistant "  «" :event "  ·"})
 
@@ -112,14 +100,14 @@
      ;; :scroll drifts past the content and reverse keys eat phantom distance
      :scroll-used scroll}))
 
-;; ── pure: chrome ──────────────────────────────────────────────────────────────
+;; ── chrome ────────────────────────────────────────────────────────────────────
 
 (defn title-line
   [{:keys [slug nrepl-port]} reg]
   (let [model (get-in reg [slug :config :model])]
     (str "llm-repl · " slug " · " model " · nREPL :" nrepl-port)))
 
-;; ── pure: the fork tree (left pane) ───────────────────────────────────────────
+;; ── the fork tree (left pane) ─────────────────────────────────────────────────
 
 (defn- children-of
   "Children of `slug`, ordered by branch point then name — the fork tree's
@@ -139,9 +127,13 @@
                 (cons slug (mapcat walk (children-of reg slug))))]
     (vec (mapcat walk roots))))
 
-(defn- short-name
+(defn short-name
   "Child display name: strip the `parent-` prefix ab! children carry
-   (scratch-nucleus under scratch → nucleus)."
+   (scratch-nucleus under scratch → nucleus). The INVERSE of the api ns's
+   `variant-slug` (D5's cross-ns naming convention: the two MUST agree —
+   the frame-test round-trip `short-name ∘ variant-slug` is the lock, so
+   this pure surface never has to require the api layer). Public for the
+   twin suite (memories/bb-jvm-private-var-twin-trap)."
   [slug parent]
   (let [n (name slug)
         p (some-> parent name (str "-"))]
@@ -205,7 +197,7 @@
     {:text       (cmp/truncate-display (str prompt view) w)
      :cursor-col (+ pw (- cursor start) 1)}))
 
-;; ── pure: the frame ───────────────────────────────────────────────────────────
+;; ── the frame ─────────────────────────────────────────────────────────────────
 
 (def tree-pane-w
   "Left tree-pane width (borders incl). Below `two-pane-threshold` total
@@ -219,7 +211,8 @@
    (registry-snapshot ⊕ ui-state ⊕ theme ⊕ term-w/h). Wide ≥70 cols: left
    tree pane (the map you move on — tab walks DFS, the highlight follows) ⊕
    right tape pane (where you are). Narrow: single pane ⊕ sessions strip.
-   The impl half only emits this; headless tests assert on it directly."
+   The impl half (tui.term) only emits this; headless tests assert on it
+   directly."
   [reg {:keys [slug scroll events pending input overlay] :as state} theme term-w term-h]
   (let [two?    (>= term-w two-pane-threshold)
         box-h   (max 4 (- term-h (if two? 1 2)))
@@ -296,7 +289,7 @@
        :cursor-col  (:cursor-col il)
        :scroll-used scroll-used})))
 
-;; ── pure: byte→logical-key decoder ────────────────────────────────────────────
+;; ── byte→logical-key decoder ──────────────────────────────────────────────────
 
 (def esc-seq-timeout-ms
   "Wait for the byte after an ESC before concluding bare Escape. MUST be >0:
@@ -355,7 +348,7 @@
       (>= c 32) [:char (char c)]
       :else :other)))
 
-;; ── pure: line editor ─────────────────────────────────────────────────────────
+;; ── line editor ───────────────────────────────────────────────────────────────
 
 (defn- insert-at [s i c] (str (subs s 0 i) c (subs s i)))
 
@@ -410,230 +403,3 @@
         (let [b (or draft "")]
           {:input (assoc in :hist-idx nil :draft nil :buffer b :cursor (count b))}))
       :else {:input in})))
-
-;; ══ impl: terminal, render loop ═══════════════════════════════════════════════
-
-(def ^:private esc theme/esc)
-(def ^:private clear-screen-s (str (esc "2J") (esc "H")))
-(def ^:private alt-screen-on-s (esc "?1049h"))
-(def ^:private alt-screen-off-s (esc "?1049l"))
-(def ^:private hide-cursor-s (esc "?25l"))
-;; tmux terminfo cnorm ≡ \e[34h\e[?25h — send the union (escapement precedent)
-(def ^:private show-cursor-s (str (esc "34h") (esc "?25h")))
-(def ^:private paste-on-s (esc "?2004h"))
-(def ^:private paste-off-s (esc "?2004l"))
-
-(defn- emit! [s]
-  (binding [*out* *err*]
-    (print s)
-    (flush)))
-
-(defn interactive-terminal?
-  "Both stdin and stdout attached to a real terminal (bb's bundled helper;
-   System/console fallback under JVM — escapement's exact pattern)."
-  []
-  (boolean
-   (if-let [tty? (try (requiring-resolve 'babashka.terminal/tty?) (catch Throwable _ nil))]
-     (and (tty? :stdin) (tty? :stdout))
-     (some? (System/console)))))
-
-(defn request-render!
-  "Flip the dirty flag — cheap, non-blocking, callable from ANY thread (the
-   registry watch, eval workers, the input thread). The ticker repaints."
-  [state]
-  (swap! state assoc :render-dirty true))
-
-(defn render-frame!
-  "Repaint NOW (ticker-called; serialized by `lock`). Reads terminal size each
-   frame — resize is picked up on the next paint, no signal handling needed."
-  [{:keys [state ^Terminal terminal lock theme]}]
-  (locking lock
-    (let [w (max 40 (.getWidth terminal))
-          h (max 8 (.getHeight terminal))
-          s (swap! state assoc :term-w w :term-h h :render-dirty false)
-          ;; the events STREAM is referenced (like :registry), deref'd per
-          ;; frame — `frame` stays pure, headless tests pass :events directly
-          s (cond-> s
-              (:events-ref s) (assoc :events (vec @(:events-ref s))))
-          {:keys [s cursor-row cursor-col scroll-used]} (frame @(:registry s) s theme w h)]
-      ;; sync state to the EFFECTIVE scroll — without this, scrolling past
-      ;; either end inflates :scroll invisibly and the reverse direction eats
-      ;; phantom distance before the view moves (human-found: arrow-up after
-      ;; bottoming out the help overlay)
-      (when scroll-used
-        (swap! state (fn [st] (if (= (:scroll st) scroll-used)
-                                st
-                                (assoc st :scroll scroll-used)))))
-      (emit! (str hide-cursor-s s
-                  (cmp/move-to-s cursor-row cursor-col)
-                  show-cursor-s)))))
-
-(defn- start-ticker!
-  "The ONE repainting thread: ~30fps, paints only when dirty (escapement's
-   coalescing pattern — producers swap!+flag at their true rate)."
-  [{:keys [state stopped?] :as h}]
-  (doto (Thread.
-         ^Runnable
-         (fn []
-           (loop []
-             (when-not @stopped?
-               (try
-                 (Thread/sleep 33)
-                 (when (:render-dirty @state)
-                   (render-frame! h))
-                 (catch InterruptedException _ nil)
-                 (catch Throwable _ nil))
-               (recur))))
-         "llm-repl-tui-render")
-    (.setDaemon true)
-    (.start)))
-
-(defn stop!
-  "Restore the terminal. Idempotent — normal exit, Ctrl-C signal, and the JVM
-   shutdown hook all funnel here (escapement's belt-and-braces pattern)."
-  [{:keys [stopped? on-stop]}]
-  (when (compare-and-set! stopped? false true)
-    (try (emit! (str theme/reset-attrs-s paste-off-s alt-screen-off-s show-cursor-s "\n"))
-         (catch Throwable _ nil))
-    (when on-stop (try (on-stop) (catch Throwable _ nil)))))
-
-(defn show-overlay!
-  "Pop a document {:title s :lines [s]} OVER the right pane. Content is
-   INJECTED (the wire layer renders it — this ns stays core-free, and any
-   future overlay — compare pane, manual pages — rides the same slot).
-   Esc dismisses; PgUp/PgDn scroll (head-anchored)."
-  [state overlay]
-  (swap! state assoc :overlay overlay :scroll 0 :render-dirty true))
-
-(defn dismiss-overlay!
-  "Drop the overlay; the right pane returns to the tape (scroll reset)."
-  [state]
-  (swap! state #(-> % (dissoc :overlay) (assoc :scroll 0 :render-dirty true))))
-
-(defn scroll-view!
-  "Move the right-pane view `n` lines, dir ∈ {:up :down} — SCREEN semantics,
-   constant across body kinds: the tape is TAIL-anchored (scroll+ ≡ toward
-   older turns ≡ up) while an overlay is HEAD-anchored (scroll+ ≡ further
-   down the document), so the sign flips per kind here, in ONE place —
-   key handlers stay direction-literal."
-  [state dir n]
-  (swap! state (fn [s]
-                 (let [sign (if (:overlay s)
-                              (if (= dir :up) - +)
-                              (if (= dir :up) + -))]
-                   (-> s
-                       (update :scroll #(max 0 (sign % n)))
-                       (assoc :render-dirty true))))))
-
-(defn cycle-slug!
-  "Point the TUI at the next session in DFS TREE order (wraps) — tab movement
-   tracks the tree pane's shape, so cycling FEELS like walking the tree."
-  [state]
-  (swap! state (fn [{:keys [registry slug] :as s}]
-                 (let [slugs (dfs-order @registry)
-                       i     (.indexOf ^clojure.lang.PersistentVector slugs slug)
-                       slug' (if (seq slugs)
-                               (nth slugs (mod (inc i) (count slugs)))
-                               slug)]
-                   (assoc s :slug slug' :scroll 0 :render-dirty true)))))
-
-(defn- input-loop!
-  "The input thread body: raw mode, then decode→dispatch until quit.
-   Loop-level keys (session/viewport/quit) here; editing keys → edit-step.
-   `on-submit` ≡ (fn [text]) — the wire layer decides chat vs form."
-  [{:keys [^Terminal terminal state on-submit on-help] :as h}]
-  (.enterRawMode terminal)
-  (let [rdr   ^NonBlockingReader (.reader terminal)
-        read! (fn [t] (if (pos? ^long t) (.read rdr (long t)) (.read rdr)))
-        page  (fn [] (max 1 (- (:term-h @state) 6)))]
-    (loop []
-      (let [k (key-from-bytes read!)]
-        (cond
-          (contains? #{:eof :ctrl-c :ctrl-d} k)
-          (do (stop! h) (System/exit 0))
-
-          ;; Esc: overlay-first (dismiss), else the editor's clear-buffer
-          (= k :esc)
-          (if (:overlay @state)
-            (dismiss-overlay! state)
-            (swap! state (fn [s] (-> s (assoc :input (:input (edit-step (:input s) k)))
-                                     (assoc :render-dirty true)))))
-
-          ;; ? on an EMPTY buffer (and not mid-paste) → help overlay
-          (and (= k [:char \?])
-               on-help
-               (str/blank? (get-in @state [:input :buffer]))
-               (not (get-in @state [:input :paste?])))
-          (on-help)
-
-          (= k :tab)  (cycle-slug! state)
-          (= k :pgup) (scroll-view! state :up (page))
-          (= k :pgdn) (scroll-view! state :down (page))
-
-          ;; overlay: arrows scroll LINE-BY-LINE (the editor's history walk
-          ;; is meaningless under an overlay; it resumes on dismiss)
-          (and (contains? #{:up :down} k) (:overlay @state))
-          (scroll-view! state k 1)
-
-          :else
-          (let [submitted (volatile! nil)]
-            (swap! state (fn [s]
-                           (let [{:keys [input submit]} (edit-step (:input s) k)]
-                             (vreset! submitted submit)
-                             (assoc s :input input :render-dirty true))))
-            (when-let [text @submitted]
-              (on-submit text)))))
-      (when-not @(:stopped? h)
-        (recur)))))
-
-(defn start!
-  "Boot the TUI: alt screen, bracketed paste, render ticker. Returns the
-   handle {:state :terminal :lock :theme :stopped?} the input loop (input ns
-   half) and the wire layer drive. `registry` ≡ core's sessions* atom,
-   `events` ≡ core's events* atom (BOTH referenced, not copied — the frame
-   reads them live; every client's receipts show, not just this surface's).
-   Caller must check interactive-terminal? first."
-  [{:keys [registry events slug nrepl-port on-stop on-submit on-help]}]
-  (let [terminal (-> (TerminalBuilder/builder) (.system true) (.build))
-        state    (atom {:registry     registry
-                        :events-ref   events
-                        :slug         slug
-                        :nrepl-port   nrepl-port
-                        :scroll       0
-                        :events       []
-                        :pending      nil
-                        :input        {:buffer "" :cursor 0 :history [] :hist-idx nil :paste? false}
-                        :term-w       (.getWidth terminal)
-                        :term-h       (.getHeight terminal)
-                        :render-dirty true})
-        h        {:state     state
-                  :terminal  terminal
-                  :lock      (Object.)
-                  :theme     (theme/theme-for (theme/color-capability true))
-                  :stopped?  (atom false)
-                  :on-stop   on-stop
-                  :on-submit on-submit
-                  :on-help   on-help}]
-    (emit! (str alt-screen-on-s clear-screen-s hide-cursor-s paste-on-s))
-    (render-frame! h)
-    (start-ticker! h)
-    (doto (Thread. ^Runnable (fn [] (try (input-loop! h) (catch Throwable _ nil)))
-                   "llm-repl-tui-input")
-      (.setDaemon true)
-      (.start))
-    ;; Ctrl-C: JLine swallows SIGINT on system terminals — install ours after
-    ;; .build so the terminal is restored (escapement's exact sequence).
-    (try
-      (sun.misc.Signal/handle
-       (sun.misc.Signal. "INT")
-       (reify sun.misc.SignalHandler
-         (handle [_ _]
-           (try (stop! h) (catch Throwable _ nil))
-           (System/exit 130))))
-      (catch Throwable _ nil))
-    (try
-      (.addShutdownHook (Runtime/getRuntime)
-                        (Thread. ^Runnable (fn [] (try (stop! h) (catch Throwable _ nil)))
-                                 "llm-repl-tui-shutdown"))
-      (catch Throwable _ nil))
-    h))
