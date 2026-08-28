@@ -17,4 +17,23 @@
   ;; D6 twin: `bb test` ≡ `clojure -M:run-tests` — same suite, both runtimes
   ;; run THIS ns's -main (src/test/us/whitford/llm_repl/test_runner.clj).
   :run-tests {:extra-paths ["src/test"]
-              :main-opts   ["-m" "us.whitford.llm-repl.test-runner"]}}}
+              :main-opts   ["-m" "us.whitford.llm-repl.test-runner"]}
+  ;; Build via tools.build — see build.clj.  clojure -T:build jar | install
+  :build   {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}}
+            :ns-default build}
+  ;; Deploy to Clojars in an ISOLATED classpath (deps-deploy pulls legacy
+  ;; maven/s3 libs that conflict with tools.build's maven-resolver, so it
+  ;; must run in its own process). Reads coordinates from the pom inside
+  ;; the jar. Needs CLOJARS_USERNAME + CLOJARS_PASSWORD (deploy token).
+  ;;   clojure -T:build jar && clojure -X:deploy
+  :deploy  {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.5"}}
+            :exec-fn      deps-deploy.deps-deploy/deploy
+            :exec-args    {:installer :remote
+                           :artifact  "target/llm-repl.jar"
+                           :pom-file  "target/classes/META-INF/maven/us.whitford/llm-repl/pom.xml"}}
+  ;; NOTE: antq exits 1 when outdated deps EXIST (by design, for CI
+  ;; gating) — a non-zero exit with a results table is success.
+  :outdated {:deps {com.github.liquidz/antq {:mvn/version "RELEASE"}
+                    ;; silence "SLF4J: Failed to load class ..." noise
+                    org.slf4j/slf4j-nop     {:mvn/version "2.0.18"}}
+             :main-opts ["-m" "antq.core"]}}}

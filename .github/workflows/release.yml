@@ -1,0 +1,96 @@
+name: Release
+
+# Deploys ONLY on release-candidate and full-release tags. Pre-release labels
+# such as -alpha / -beta intentionally do NOT trigger a deploy (those are for
+# local builds via `clojure -T:build jar|install`; anima rides :local/root or
+# a git sha during alpha).
+#   full release:      git tag v0.3.0       && git push origin v0.3.0
+#   release candidate: git tag v0.3.0-RC1   && git push origin v0.3.0-RC1
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'           # full release,      e.g. v0.3.0
+      - 'v[0-9]+.[0-9]+.[0-9]+-RC[0-9]+'  # release candidate, e.g. v0.3.0-RC1
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # required to create the GitHub Release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0      # full history for release notes generation
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Clojure CLI
+        run: |
+          curl -fsSL -o /tmp/linux-install.sh \
+            https://github.com/clojure/brew-install/releases/latest/download/linux-install.sh
+          chmod +x /tmp/linux-install.sh
+          sudo /tmp/linux-install.sh
+          clojure --version
+
+      - name: Install babashka
+        run: |
+          curl -fsSL -o /tmp/install-bb \
+            https://raw.githubusercontent.com/babashka/babashka/master/install
+          chmod +x /tmp/install-bb
+          sudo /tmp/install-bb
+          bb --version
+
+      - name: Cache Clojure dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            .cpcache
+          key: ${{ runner.os }}-deps-${{ hashFiles('deps.edn', 'bb.edn') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests (bb — the primary runtime)
+        # The twin gates the jar: BOTH runtimes must pass before anything
+        # ships (D6).
+        run: bb test
+
+      - name: Run tests (JVM — the twin)
+        run: clojure -M:run-tests
+
+      - name: Build jar
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: clojure -T:build jar
+
+      - name: Deploy to Clojars
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_PASSWORD: ${{ secrets.CLOJARS_PASSWORD }}
+        run: clojure -X:deploy
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Mark pre-releases (SemVer pre-release has a hyphen, e.g. v0.3.0-RC1)
+          prerelease=""
+          case "$GITHUB_REF_NAME" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" \
+            target/llm-repl.jar \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            $prerelease

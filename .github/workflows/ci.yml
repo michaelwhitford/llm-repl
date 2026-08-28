@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    # THE D6 TWIN, structurally enforced: the SAME suite runs under bb
+    # (primary runtime) AND JVM Clojure (compatible superset) — a bb-only
+    # latent break (phantom dep, bad hint, private-var call) fails the leg
+    # that would have caught it (memories/twin-first-load-latent-breaks).
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Clojure CLI
+        # Official install script (a plain run step, so no Node.js-20 based
+        # third-party action / deprecation warning).
+        run: |
+          curl -fsSL -o /tmp/linux-install.sh \
+            https://github.com/clojure/brew-install/releases/latest/download/linux-install.sh
+          chmod +x /tmp/linux-install.sh
+          sudo /tmp/linux-install.sh
+          clojure --version
+
+      - name: Install babashka
+        run: |
+          curl -fsSL -o /tmp/install-bb \
+            https://raw.githubusercontent.com/babashka/babashka/master/install
+          chmod +x /tmp/install-bb
+          sudo /tmp/install-bb
+          bb --version
+
+      - name: Cache Clojure dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            .cpcache
+          key: ${{ runner.os }}-deps-${{ hashFiles('deps.edn', 'bb.edn') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Run tests (bb — the primary runtime)
+        run: bb test
+
+      - name: Run tests (JVM — the twin)
+        run: clojure -M:run-tests
+
+      - name: Validate config.example.edn against the config schema
+        # The documented config surface must satisfy its own contract (D7:
+        # roster/config-schema — closed ⊕ :ext, humanized errors).
+        run: |
+          bb -e '(require (quote [us.whitford.llm-repl.roster :as roster]))
+                 (-> "config.example.edn"
+                     roster/read-edn-file
+                     roster/validate-config)
+                 (println "config.example.edn valid")'
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Clojure CLI
+        run: |
+          curl -fsSL -o /tmp/linux-install.sh \
+            https://github.com/clojure/brew-install/releases/latest/download/linux-install.sh
+          chmod +x /tmp/linux-install.sh
+          sudo /tmp/linux-install.sh
+          clojure --version
+
+      - name: Cache Clojure dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            .cpcache
+          key: ${{ runner.os }}-deps-${{ hashFiles('deps.edn', 'bb.edn') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install clj-kondo
+        run: |
+          curl -fsSL -o /tmp/install-clj-kondo \
+            https://raw.githubusercontent.com/clj-kondo/clj-kondo/master/script/install-clj-kondo
+          chmod +x /tmp/install-clj-kondo
+          sudo /tmp/install-clj-kondo
+          clj-kondo --version
+
+      - name: Prime dependency cache
+        # Download all deps BEFORE the classpath command substitution below.
+        # On a cold ~/.m2, `clojure -Spath` interleaves "Downloading:" progress
+        # with the classpath, corrupting the string passed to clj-kondo — it
+        # then lints nothing and copies no configs, so the real lint runs
+        # without imported library configs and reports spurious warnings.
+        run: clojure -P -A:run-tests
+
+      - name: Regenerate dependency lint configs
+        # .clj-kondo/imports/ is gitignored (derived); regenerate third-party
+        # configs/hooks from the classpath before linting source.
+        run: |
+          clj-kondo --lint "$(clojure -Spath -A:run-tests)" --dependencies --copy-configs
+
+      - name: Lint
+        run: clj-kondo --lint src/main src/test
