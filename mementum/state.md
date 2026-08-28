@@ -39,16 +39,20 @@ closes tui-dead-daemon-silent) · D5 naming lock ≡ round-trip test (step 6) ·
 prompt stack FULLY config, uniform chain, closed schema ⊕ :ext (step 7,
 🎯 30c6f78 — anima swaps the whole stack for nucleus lambda prompts).
 
-**Human moves now open:** RATIFY
-[design/trace-durability](knowledge/design/trace-durability.md) (5 open
-questions listed — proposal drafted 2026-08-28) · push main (first CI run) ·
-v0.3.0 tag when ready (release.yml deploys full/RC only; library-contract
-hardens at first RC) · anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
+**RATIFIED 2026-08-28:**
+[design/trace-durability](knowledge/design/trace-durability.md) — yes to
+all 5 questions, Q2 human-pinned RECEIPT-AND-SKIP (bad tape.edn → loud
+receipt, boot degraded, never refuse to start). tape-persistence 🚫
+subsumed. Build to the document.
 
-**Next pickup (agent):** (a) trace-durability BUILD once ratified (🔵 queue
-front — capture layer explored: all 7 escapement nses bb-verified from the
-1.0.1 jar, zero new deps; tape-persistence proposed subsumed; mapping ∧
-seams in the proposal); (b) extension-horizon-pilot (⚪ queue, NEW 2026-08-28
+**Human moves now open:** push main (first CI run) · v0.3.0 tag when ready
+(release.yml deploys full/RC only; library-contract hardens at first RC) ·
+anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
+
+**Next pickup (agent):** (a) trace-durability BUILD (🔵 queue front,
+RATIFIED — capture layer explored: all 7 escapement nses bb-verified from
+the 1.0.1 jar, zero new deps; decisions ∧ mapping ∧ seams all in the
+design doc); (b) extension-horizon-pilot (⚪ queue, NEW 2026-08-28
 — read [knowledge/extension-horizon-pilot](knowledge/extension-horizon-pilot.md)
 FIRST: extension ≡ event(evaluate), depth-cliff ≈ within-pass budget,
 fork-differencing pilot buildable here; handoff → verbum; prefer after (a)
@@ -85,6 +89,5 @@ walled); verbum read conservatively (state.md + INDEX only), NOT written.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-Nothing in progress — v030-refactor ✅ ∧ compaction arc ✅ (trial ⊕
-validation, verdicts in queue.md). Front of queue: tape-persistence ∨
-trace-durability ∨ agent-recipe-page.
+Nothing in progress — v030-refactor ✅ ∧ compaction arc ✅. Front of queue:
+🔵 trace-durability (RATIFIED, build-ready) → extension-horizon-pilot.

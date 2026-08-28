@@ -1,18 +1,19 @@
 ---
 type: Architecture
 title: Trace durability ⊕ tape persistence — one seam on escapement's capture layer
-status: PROPOSED — awaiting ratification (do not build until the human ratifies)
+status: RATIFIED 2026-08-28 — all 5 open questions decided (see § Ratified decisions)
 related: [design/architecture, design/library-contract, upstream/escapement]
 ---
 
-# Trace durability ⊕ tape persistence — design proposal
+# Trace durability ⊕ tape persistence — ratified design
 
 > Drafted 2026-08-28 from the capture-layer exploration (source-read of all 7
 > escapement nses ⊕ bb round-trip verified against the 1.0.1 jar already on
 > the classpath — see [upstream/escapement](../upstream/escapement.md) § capture
 > layer). Expands the architecture doc's "Trace durability" placeholder and
 > ABSORBS the tape-persistence queue item: one integration covers both.
-> Nothing here is ratified; § Open questions lists the decision points.
+> RATIFIED 2026-08-28 (human: yes to all 5, Q2 pinned receipt-and-skip) —
+> § Ratified decisions is authoritative; build to this document.
 
 ## Why (unchanged from the placeholder, plus one merge)
 
@@ -163,24 +164,24 @@ that ran it. No llm-repl code needed; document in the agent-recipe page.
 - The live writer owns appends; readers use disk-read (enforced upstream).
 - Registry stays EDN ∧ trace-free: the hook is injected, not required.
 
-## Open questions (ratification decision points)
+## Ratified decisions (2026-08-28, human: yes to all)
 
-1. **Default on or off?** Proposal: ON when a daemon owns a work-dir; OFF
-   under `--plain` (debug hatch, no persistence surprise). Config
-   `:trace {:enabled? bool :dir ".llm-repl"}`.
-2. **Recovery: auto or explicit?** Proposal: auto-recover into `sessions*`
-   at boot (loud receipts) — matches "the daemon is the persistence given a
-   process". Alternative: a `restore!` manual command, lazier but another
-   thing to know.
-3. **Turn ≡ assistant tape index** — accepts sparse turn numbers (indices
-   skip user messages). Alternative: per-session eval counter (dense, but a
-   second bookkeeping number). Proposal: tape index (one number, already in
-   receipts as `✓@N`).
-4. **compact! original blob** — redundant with `:original` on-tape? Proposal:
-   yes, capture anyway — the on-tape copy dies with the registry and D3
-   flags its fetch weight; the durable copy is the arm-diff ground truth.
-5. **Queue merge** — subsume ⚪ tape-persistence into ⚪ trace-durability
-   (this doc) on ratification.
+1. **Default: ON for daemon, OFF for `--plain`.** Config
+   `:trace {:enabled? bool :dir ".llm-repl"}`. The daemon logs by default
+   (syslog posture); the labeled debug hatch stays clean.
+2. **Recovery: AUTO at boot, loud receipts — RECEIPT-AND-SKIP on bad
+   snapshots** (human-pinned). A snapshot that fails to parse emits
+   `{:kind :recover :msg "✗ …"}` and is skipped; the daemon boots degraded,
+   never refuses to start over one bad session file. Recovery is additive to
+   an empty registry; atomic writes ∧ visit-versioning bound the blast radius.
+3. **Turn ≡ assistant tape index (sparse).** One ID space — the coordinate
+   already in receipts (`✓@N`), survives compact! (index-stable, ratified).
+   Gaps in `turns/` cost nothing; a second dense counter costs forever.
+4. **compact! original → disk, yes.** Not redundant: the on-tape `:original`
+   dies with the registry; the durable `original.edn` is the arm-diff ground
+   truth against silent confabulation (compact-validation's finding).
+5. **tape-persistence SUBSUMED** into this design (🚫 in queue). One store,
+   one seam; tape.edn ≡ one more artifact.
 
 ## Estimate
 
