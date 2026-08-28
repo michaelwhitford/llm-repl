@@ -40,7 +40,7 @@ is real: two green runs — twin suite ∧ kondo ∧ schema validation on ubuntu
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
 tui-design-rules ∧ compaction ∧ frames ∧ upstream/escapement. Traps ≡
-`memories/` (19 pages, one insight each —
+`memories/` (20 pages, one insight each —
 `git grep -- mementum/` before re-deriving; recall > re-derivation).
 
 **Human moves open:** v0.3.0 tag when ready (release.yml deploys full/RC
@@ -48,9 +48,12 @@ only; library-contract hardens at first RC) · anima `:local/root` ∨
 `0.3.0-alpha` · restart any LOCAL daemon predating `trace` (the container is
 already on the current image).
 
-**Next pickup (agent):** clojure-eval-per-form-values — topology gap in
-`tools.clj`, ~half session, no ratification needed (tapeless-success-capture
-sits above it but wants a D-decision first). Instrument LIVE: container
+**Next pickup (agent):** registry-fetch-projection — the wire sends the WHOLE
+registry (tapes) every version bump while `sessions-list` already exists
+unused, 27× smaller; measured, scoped, all-internal, no ratification needed
+(audit table ∧ the split-payload-not-round-trip rule ≡
+knowledge/tui-design-rules.md). tapeless-success-capture sits behind it and
+wants a D-decision first. Instrument LIVE: container
 `llm-repl` @ 127.0.0.1:7899, mount ≡ `~/llm-repl-work` → `/work` — **NOT
 this repo**; `:scratch` at visit 2, qwen3.6-35B-A3B, trace on. Probing a
 model through it? Read `memories/probe-hygiene-tools-armed` FIRST.
@@ -80,4 +83,4 @@ model through it? Read `memories/probe-hygiene-tools-armed` FIRST.
 ## Queue
 
 → `mementum/queue.md` (prospective memory). Nothing in progress. Front:
-tapeless-success-capture → clojure-eval-per-form-values → agent-recipe-page.
+registry-fetch-projection → tapeless-success-capture → clojure-eval-per-form-values.
