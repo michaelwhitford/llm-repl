@@ -50,15 +50,21 @@ closes tui-dead-daemon-silent), structural suppress-echo (regex dead),
 poll-cycle! ≡ injectable-fetch test seam. Twin caught 2 latent JVM breaks
 @ net.clj first-load (memories/twin-first-load-latent-breaks);
 (6) `f8450fb` `tui.frame`/`tui.term` — testable cut ≡ file topology (D5),
-frame pure (loads terminal-free), headless suite D6 named finally exists,
-D5 naming lock ≡ short-name ∘ variant-slug round-trip test (frame encodes
-the inverse, no api require). Suite: 119 tests / 365 assertions, both
-runtimes. compact-live-trial UNBLOCKED; attach matrix fully human-verified.
+frame pure, headless suite exists, D5 naming lock ≡ round-trip test;
+(7) `f9fc63e` `daemon`/`roster` D7 — spawn-cmd JVM guard, EOF-assert,
+malli schema (closed ⊕ :ext), prompt stack FULLY config (RATIFIED
+@30c6f78: uniform chain session > model > provider > root for preamble ∧
+system-prompt ∧ orientation — anima swaps the whole stack for nucleus
+lambda prompts), default-config def→fn, reload live-verified over the
+wire (tapes intact, bad edit loud). Suite: 138 tests / 409 assertions,
+both runtimes. compact-live-trial UNBLOCKED; attach matrix human-verified.
 
-**Next pickup: refactor step 7 — `daemon` JVM fail-loud ⊕ `roster` D7.**
-JVM spawn! fails loud with instructions (no babashka.config property);
-roster: default-config as fn, dynamic config/real reload-config!. Full
-order in architecture § refactor order.
+**Next pickup: refactor step 8 — build.clj ⊕ CI (the LAST step).**
+tools.build (lib us.whitford/llm-repl, VERSION ← git tag, -alpha local),
+ci.yml (bb ∧ JVM twin + lint), release.yml (v[0-9]* tags only, tests gate
+the jar) — fulcro-rad-datalevin model; then first -alpha local install →
+anima :local/root. CI validates config.example.edn against config-schema.
+Full spec in architecture § build ∧ release ∧ CI.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -79,4 +85,4 @@ order in architecture § refactor order.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-In progress: ▶ v030-refactor — steps 1–6 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8, 75df5a0, f8450fb); next ≡ step 7 (daemon JVM fail-loud, roster D7 dynamic config/reload). compact-live-trial unblocked.
+In progress: ▶ v030-refactor — steps 1–7 ✅ (2aa7513, 4e89759, aff3a1b, 02a71e8, 75df5a0, f8450fb, f9fc63e); next ≡ step 8 (build.clj ⊕ ci.yml/release.yml → first -alpha → anima :local/root). compact-live-trial unblocked.
