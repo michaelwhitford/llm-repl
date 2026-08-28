@@ -94,6 +94,20 @@ Two known bites, one silent and one loud:
 The nucleus/licensing boundary rides the mounted config file, outside repo
 and image. `docker/config.edn` is the contract-as-example only.
 
+## The rebuild path — docker/container.sh
+
+The pinned spec, executable (committed 2026-08-28): `./docker/container.sh`
+builds from HEAD, replaces the named container, runs loopback-only with
+`~/llm-repl-work:/work`, then gates readiness on a REAL eval round-trip
+(`(+ 1 2)` via the project's `net` ns, retried in one bb process, 30s
+bound, loud failure with logs). `ENGINE=docker` runs the identical spec;
+`ENGINE IMAGE NAME PORT WORK` all override.
+
+⚠️ Port-open is NOT ready: podman's forwarder (gvproxy) accepts the moment
+the port publishes, before anything inside listens — a bare `nc -z` check
+passes against a half-open forward (bit the first version of this script;
+memories/podman-port-open-is-not-ready). Readiness ≡ answering.
+
 ## Lifecycle ownership
 
 The engine (podman/docker) owns container start/stop. `bb start`/`bb stop`/
