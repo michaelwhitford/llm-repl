@@ -9,11 +9,13 @@
             [us.whitford.llm-repl.registry-test]
             [us.whitford.llm-repl.roster-test]
             [us.whitford.llm-repl.tape-test]
+            [us.whitford.llm-repl.trace-test]
             [us.whitford.llm-repl.tui.frame-test]))
 
 (defn -main [& _]
   (let [{:keys [fail error]} (t/run-tests 'us.whitford.llm-repl.tape-test
                                            'us.whitford.llm-repl.registry-test
+                                           'us.whitford.llm-repl.trace-test
                                            'us.whitford.llm-repl.completion-test
                                            'us.whitford.llm-repl.client-test
                                            'us.whitford.llm-repl.tui.frame-test

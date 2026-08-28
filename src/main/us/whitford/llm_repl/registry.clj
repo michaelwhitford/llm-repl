@@ -66,6 +66,29 @@
   event-id*
   (atom 0))
 
+;; ── injected taps (trace-durability — design/trace-durability.md) ──────────
+;;
+;; The registry stays io-free: these are OPEN SLOTS (absent(default) ∧
+;; present(compose)), nil until a host injects — `trace/init!` at daemon
+;; boot sets both, `trace/close!` retracts. A library consumer that never
+;; inits pays nothing. Tap calls are try/catch-guarded at the call site: an
+;; injected fn must never break the event/mutation path (the tap owns its
+;; own loudness — trace's fns emit receipts on failure by contract; the
+;; guard here is the belt for the injection seam itself).
+
+(defonce ^{:doc "Injected observer of every completed event map (called with
+   the event AFTER :id/:at assignment) — the transcript-JSONL emission slot.
+   nil ≡ no observer."}
+  event-tap*
+  (atom nil))
+
+(defonce ^{:doc "Injected observer of every successful `mutate!` (called with
+   [old new], the swap-vals! pair, AFTER the EDN assert and version bump — a
+   tap only ever sees valid registry states) — the tape-snapshot slot.
+   nil ≡ no observer."}
+  mutate-tap*
+  (atom nil))
+
 ;; ── EDN assert ────────────────────────────────────────────────────────────
 
 (defn- edn-leaf-violation?
@@ -138,6 +161,8 @@
                             "ever): " (pr-str violations))
                        {:violations violations})))
     (swap! version* inc)
+    (when-let [tap @mutate-tap*]
+      (try (tap old new) (catch Throwable _ nil)))
     [old new]))
 
 ;; ── events ────────────────────────────────────────────────────────────────
@@ -157,6 +182,8 @@
         e' (assoc e :id id :at (System/currentTimeMillis))]
     (swap! events* #(vec (take-last 200 (conj % e'))))
     (swap! version* inc)
+    (when-let [tap @event-tap*]
+      (try (tap e') (catch Throwable _ nil)))
     e'))
 
 (defn event-line
