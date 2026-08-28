@@ -83,6 +83,12 @@ paths) grounds the frames above mechanically, with cross-model measurements:
   evaluation-strategy directive — don't soft-β what should be δ-reduced.
   API-surface confinement ≡ operand-residency applied to the instruction
   vocabulary: the model emits only δ-redexes already on the tape.
+- **LIVE-CONFIRMED (2026-08-28, compact-validation A/B/C):** good λ
+  (binders kept) → 5/5 probe parity with the pristine arm; harsh λ
+  (binders starved) → fluent CONFABULATION, not absence — one binding
+  regenerated correct-by-attractor (same generator re-invented 230°C),
+  order re-derived from recency exactly as predicted below, flavor tail
+  drifted. Details: memories/compaction-confabulates-not-forgets.
 - **compact! ≡ memory-layout engineering:** affine-friendly (don't force
   re-duplication of content the tape held verbatim), operand placement
   respects recency kernels, binder mass preserved for anything the future

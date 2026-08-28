@@ -41,10 +41,13 @@ prompt stack FULLY config, uniform chain, closed schema ⊕ :ext (step 7,
 (release.yml deploys full/RC only; library-contract hardens at first RC) ·
 anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
 
-**Next pickup (agent):** queue front — compact-validation (READY:
-compact-live-trial ✅ 2026-08-28 — one-dispatch self-compaction, verdict
-in queue.md ⊕ memories/self-compaction-first-exercise); then
-tape-persistence ∨ trace-durability ∨ agent-recipe-page.
+**Next pickup (agent):** queue front — tape-persistence ∨ trace-durability
+∨ agent-recipe-page. Compaction arc COMPLETE (trial ⊕ validation ✅
+2026-08-28): self-compaction one-shots with an explicit size budget;
+over-compaction confabulates silently (memories/
+compaction-confabulates-not-forgets — validation ≡ arm-diff, λ ≡ keep
+binders). trace-durability gains urgency: durable traces are the audit
+surface for silent confabulation.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
