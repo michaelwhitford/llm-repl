@@ -16,46 +16,46 @@ llm-repl — an LLM chat completion as a branchable continuation: the tape
 live. Humans (TUI), models (self-eval), editors ≡ equal nREPL clients of one
 persistent core. Two consumers: standalone tool (`bb llm-repl`) and library
 for anima (`us.whitford/llm-repl`, `:complete-fn` injection). v0.2.0
-tagged ∧ public; v0.3.0 refactor complete, `0.3.0-alpha` in ~/.m2 — awaiting
-the human's push/tag/anima moves.
+tagged ∧ public; v0.3.0 complete ∧ PUSHED, `0.3.0-alpha` in ~/.m2 — the tag
+∧ the anima move are the human's.
 
 ## Frontier
 
-**Three arcs shipped 2026-08-28, all ✅** (ledgers ≡ queue.md § complete):
+**Four arcs shipped 2026-08-28, all ✅** (ledgers ≡ queue.md § complete).
+CI is real now: pushed, two green runs — the twin suite ∧ kondo ∧ schema
+validation all exercised on ubuntu, not just this laptop.
 
-- **v030-refactor** — the code ≡ the ratified design (`design/architecture`
-  @ `4cce4be` ⊕ 🎯 `30c6f78`). Suite 0 → 138, bb ∧ JVM twins, CI enforces
-  both. `0.3.0-alpha` load-verified from a foreign dir (the anima path).
-- **compaction** — `compact!` exercised by the machine it rewrites. Over-
-  compaction CONFABULATES silently ⇒ validation ≡ arm-diff, `:original` ≡
-  the only post-hoc ground truth ([compaction](knowledge/compaction.md)).
-- **trace-durability** — the daemon has a flight recorder: `.llm-repl/`
-  holds requests/responses (thinking survives), tool rounds ∧ results,
-  `compact!` originals, `tape.edn` (auto-recovered at boot), transcript
-  JSONL (`:seq` continuous across restarts). Tapeless ≡ receipt-only EXCEPT
-  failed sends: those capture ∧ their ✗ receipts carry `:io/ref` (AMENDED).
-  CONTAINER-VERIFIED: `.llm-repl/` keys off CWD ≡ `/work`, so the recorder
-  writes through the mount to the host ∧ `:io/ref` resolves from macOS —
-  zero container-specific code ([container](knowledge/container.md)).
+- **v030-refactor** — code ≡ the ratified design (@`4cce4be` ⊕ 🎯`30c6f78`).
+  The suite was born here: 0 → 138, now 170 (bb ∧ JVM twins, CI enforces).
+- **compaction** — over-compaction CONFABULATES silently ⇒ validation ≡
+  arm-diff, `:original` ≡ the only post-hoc ground truth.
+- **trace-durability ⊕ tapeless-error-capture** — `.llm-repl/` ≡ a flight
+  recorder (requests ∧ verbatim responses ∧ tool rounds ∧ `compact!`
+  originals ∧ `tape.edn` recovery ∧ transcript `:seq` across restarts), and
+  failed sends ALWAYS capture with ✗ receipts carrying `:io/ref` (decision 1
+  AMENDED). Keys off CWD ≡ `/work` ⇒ writes through the container mount to
+  the host. The HTTP 400 behind the amendment is still UNEXPLAINED — the
+  ticket bought the instrument, not the answer.
 
-**Knowledge:** `knowledge/design/` ≡ [architecture](knowledge/design/architecture.md)
-· [library-contract](knowledge/design/library-contract.md) ·
-[trace-durability](knowledge/design/trace-durability.md). Operational ≡
-[container](knowledge/container.md) · [attach-topology](knowledge/attach-topology.md)
-· [self-eval](knowledge/self-eval.md) · [tui-design-rules](knowledge/tui-design-rules.md)
-· [compaction](knowledge/compaction.md) · [frames](knowledge/frames.md) ·
-[extension-horizon-pilot](knowledge/extension-horizon-pilot.md). Traps ≡
-`memories/` (18 pages, one insight each — `git grep` before re-deriving).
+**Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
+trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
+tui-design-rules ∧ compaction ∧ frames ∧ extension-horizon-pilot ∧
+upstream/escapement. Traps ≡ `memories/` (18 pages, one insight each —
+`git grep -- mementum/` before re-deriving; recall > re-derivation).
 
 **Human moves open:** v0.3.0 tag when ready (release.yml deploys full/RC
 only; library-contract hardens at first RC) · anima `:local/root` ∨
-`0.3.0-alpha` · rebuild any image ∧ restart any daemon predating `trace`.
+`0.3.0-alpha` · restart any LOCAL daemon predating `trace` (the container is
+already on the current image).
 
 **Next pickup (agent):** extension-horizon-pilot — read
 [the page](knowledge/extension-horizon-pilot.md) FIRST (extension ≡
-event(evaluate), depth-cliff ≈ within-pass budget, fork-differencing
-buildable here; handoff → verbum; trace-durability landed ⇒ arm-diffs are
-DURABLE now).
+event(evaluate), depth-cliff ≈ within-pass budget, fork-differencing here;
+handoff → verbum, Michael rules the freeze). Ready NOW: arm-diffs are
+DURABLE, and the instrument is LIVE — container `llm-repl` @ 127.0.0.1:7899
+(the repo's `.nrepl-port` points there), `:scratch` recovered at visit 2,
+qwen3.6-35B-A3B behind it. Drive it over nREPL; `bounce!`/`trampoline!` cost
+the tape nothing.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
