@@ -5,21 +5,29 @@
 #   podman build -t llm-repl -f docker/Dockerfile .
 #
 # Run headless (publish LOOPBACK-ONLY — nREPL is unauthenticated eval):
-#   podman run -d -p 127.0.0.1:7899:7899 \
-#     -v ~/llm-work:/work \
+#   podman run -d --name llm-repl -p 127.0.0.1:7899:7899 \
+#     -v ~/llm-repl-work:/work \
 #     -v ~/.config/llm-repl:/home/repl/.config/llm-repl:ro \
 #     llm-repl
 #
+# The ~/.config mount is OPTIONAL — a ./config.edn in the work dir is
+# self-sufficient. Mount it to inherit the host config (preamble etc.);
+# omit it to keep the licensing boundary outside the container entirely.
+#
 # TUI instead:   podman run -it ... llm-repl       (CMD swap, same image)
+# Host TUI onto a RUNNING container:  bb llm-repl --attach 7899
+# Lifecycle is the ENGINE's: podman start/stop/logs — never `bb stop`.
 #
 # Topology:
 #   /app    baked source + bb.edn; deps warmed at build → offline at runtime.
 #   /work   WORKDIR ≡ the mount seam. Everything that keys off CWD crosses
 #           the boundary here: .nrepl-port lands host-side (editor
 #           auto-attach), ./config.edn is read from here (later-wins over
-#           ~/.config), files the model evals into existence appear here.
-#           The ONE deliberate hole in the sandbox wall — user-chosen,
-#           user-sized.
+#           ~/.config), .llm-repl/ (the trace flight recorder: requests,
+#           responses, tape.edn, transcript.jsonl) accumulates host-side and
+#           SURVIVES the container, files the model evals into existence
+#           appear here. The ONE deliberate hole in the sandbox wall —
+#           user-chosen, user-sized.
 #   Config is NEVER baked into the image (the nucleus/licensing boundary
 #   lives in the mounted config, outside the repo and outside the image).
 

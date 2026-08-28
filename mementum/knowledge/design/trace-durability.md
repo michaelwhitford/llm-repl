@@ -2,7 +2,7 @@
 type: Architecture
 title: Trace durability ⊕ tape persistence — one seam on escapement's capture layer
 status: BUILT 2026-08-28 (same day as ratification) — verified by trace_test.clj (15 tests incl. disk twin), capture tests in completion_test/llm_repl_test, and a LIVE two-incarnation restart (visit 1→2, :recover receipt, transcript :seq continuous)
-related: [design/architecture, design/library-contract, upstream/escapement]
+related: [design/architecture, design/library-contract, upstream/escapement, container]
 ---
 
 # Trace durability ⊕ tape persistence — ratified design
@@ -21,6 +21,12 @@ related: [design/architecture, design/library-contract, upstream/escapement]
    restart; the llama.cpp verbose log (the only trace) gets purged. Durable
    traces make `compact!` safe at scale: the tape is rewritten, every step
    stays retrievable (`:original` on-tape ⊕ full generation on disk).
+   **CLOSED 2026-08-28** — the motivating failure is verified dead in the
+   place it happened: `.llm-repl/` keys off CWD ≡ `/work`, so a
+   containerized daemon writes the trace through the mount to the host and
+   `:io/ref` resolves from macOS (knowledge/container § trace durability
+   crosses the wall). No container-specific code; the mount seam was already
+   the answer.
 2. **Provenance** — the `:implant` result: a forged turn (raw `swap!`) is
    invisible from inside; on disk, `tape ∖ trace ≡ undeclared edits`.
    Every legitimate assistant turn has a captured generation behind it;

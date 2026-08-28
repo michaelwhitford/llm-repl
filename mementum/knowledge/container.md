@@ -2,7 +2,7 @@
 type: Reference
 title: container — the containerized core (docker ∧ podman, one Dockerfile)
 status: active
-related: [attach-topology, design/architecture]
+related: [attach-topology, design/architecture, design/trace-durability]
 ---
 
 # The containerized core
@@ -36,8 +36,38 @@ user.
 
 WORKDIR `/work` is the mount seam — everything keyed off CWD crosses here:
 `.nrepl-port` lands host-side (editor auto-attach), `./config.edn` is read
-from here (later-wins over ~/.config), files the model evals into existence
-appear here. THE ONE DELIBERATE HOLE in the wall — user-chosen, user-sized.
+from here (later-wins over ~/.config), `.llm-repl/` (the trace flight
+recorder) accumulates host-side, files the model evals into existence appear
+here. THE ONE DELIBERATE HOLE in the wall — user-chosen, user-sized.
+
+## Trace durability crosses the wall
+
+`.llm-repl/` is keyed off CWD like everything else, so a containerized
+daemon's flight recorder writes **through the mount to the host** — the
+trace outlives the container by construction, no extra volume, no extra
+config. Live-verified 2026-08-28 (podman, `~/llm-repl-work:/work`): one real
+completion produced `main/nodes/scratch/1/{seed,tape}.edn`,
+`…/turns/1/{request,response}.edn` and `main/transcript.jsonl`, all readable
+from macOS, the response captured verbatim (`:stop-reason`, `:content`,
+`:usage` intact — that run had thinking off, so the thinking-survives-on-disk
+guarantee is inherited from the local verification, not re-proved here).
+
+The receipt contract holds across the boundary unchanged:
+
+```
+{"kind":"eval!","msg":"✓@2","io/ref":"nodes/scratch/1/turns/1/response.edn","seq":3}
+```
+
+`:io/ref` is computed PRE-write (path ≡ pure fn of coords — locator
+determinism), and the file it names is `cat`-able host-side. Consequence:
+`podman stop` is not data loss. On `podman start`, `recover!` reads
+`tape.edn` at `:headless` boot (receipt-and-skip) and `transcript.jsonl`
+`:seq` continues across incarnations — the same guarantee the local daemon
+has, because it is the same code reading the same CWD.
+
+⚠️ An image built before trace-durability landed has no `trace` ns. Rebuild
+after upgrading, or the recorder silently isn't there (the image is the
+staleness surface — `podman images` timestamps are the tell).
 
 ## Network contract (docker/config.edn ≡ the example)
 
@@ -69,4 +99,6 @@ consults `:attach` (a container must never self-attach) and never writes
 
 non-root mount write ✓ · `.nrepl-port` → host ✓ · eval round-trip ✓ · host
 gateway reaches llama.cpp :5100 ✓ · full completion through the wall ✓ ·
-TUI-over-container attach human-verified ✓
+TUI-over-container attach human-verified ✓ · trace tree + transcript land
+host-side, `:io/ref` resolves from macOS ✓ (2026-08-28, image `6f394fd`
+built from `d03c284` — the first image carrying the `trace` ns)
