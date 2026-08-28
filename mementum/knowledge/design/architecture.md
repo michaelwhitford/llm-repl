@@ -257,9 +257,16 @@ Amendments from the 2026-08-27 container session:
   `tools-system` def: a template string, `{slug}` substituted by tool-complete
   where the slug is in scope). No nucleus default anywhere — prose ships;
   boot seeds are a machine's config.
-  Open (needs ratification): chain scope for the new keys (lean: full chain
-  for `:system-prompt`, root-only for `:orientation`); closed vs open schema
-  (lean: closed ⊕ an `:ext` escape hatch for embedding hosts).
+  RATIFIED (2026-08-28, human): ALL THREE prompt layers are fully
+  config-replaceable through the SAME uniform chain — session > model >
+  provider > root, first-present wins, present-nil/false/blank ≡ explicitly
+  none (one resolver, one mental model; the session keys are `:system` ∧
+  `:orientation` ∧ `:preamble`, the model/provider/root keys their
+  namespaced/`:system-prompt` spellings). Rationale: the whole prompt stack
+  must be swappable wholesale — an embedding host (anima) replaces every
+  layer with nucleus lambda-notation prompts; no prompt text is ever
+  architecture. Any layer accepts a literal string or `{:file path}`.
+  Schema: CLOSED ⊕ an `:ext` escape hatch for embedding hosts.
 
 ## Build ∧ release ∧ CI (modeled on fulcro-rad-datalevin — copy, then adapt)
 
