@@ -183,6 +183,56 @@ that ran it. No llm-repl code needed; document in the agent-recipe page.
 5. **tape-persistence SUBSUMED** into this design (🚫 in queue). One store,
    one seam; tape.edn ≡ one more artifact.
 
+## Build decisions (2026-08-28, build session — runtime-pinned ∧ human-consulted)
+
+Runtime facts (bb REPL against the 1.0.1 jar, this session):
+
+- **node-id must be a KEYWORD.** `encode-node-id` assumes keyword print form
+  and strips the leading char — a STRING node-id `"ouro"` silently becomes
+  path `nodes/uro/…`. Our slugs are keywords; pass them raw, never `(name)`.
+- **kind is a STRING** (`"response"`, `"tool-results/<id>"`) — a keyword kind
+  renders its colon into the filename (`turns/4/:response.edn`).
+- **`capture-blob!` OVERWRITES (last write wins); only `capture-request!` is
+  first-write-wins.** Verified: two blob writes → second content survives;
+  two request writes → first survives.
+- `read-artifact` returns the `pr-str` STRING — callers `edn/read-string`.
+- Locators are DETERMINISTIC (path ≡ pure fn of node/visit/turn/kind) — a
+  receipt can carry `:io/ref` for a blob *before or without* the write
+  (`trace/ref-for`), no reordering of receipt-then-dispatch needed.
+
+Decisions layered on the ratification:
+
+1. **Tapeless drivers are receipt-only** (human-decided this session).
+   `bounce!`/`trampoline!` never commit, so their sends have NO assistant
+   tape index — N bounces off one prefix collide on the same turn number.
+   They bind `trace/*capture?*` false; the receipt stream stays their trace
+   (the standing S3* posture). `eval!`, `run-battery!`, and `ab!` arms get
+   full capture. Provenance invariant unharmed: it concerns TAPE turns.
+2. **`drop!` writes a tombstone** (`{:trace/dropped true :at ms}` over
+   `tape.edn`) — without it, auto-recovery would resurrect deliberately
+   dropped sessions on every daemon restart. `recover!` skips tombstones
+   silently (intentional state, not a failure). Prior visits' turn blobs
+   remain on disk — drop deletes the SESSION, never the history.
+3. **Tool-loop intermediate responses** capture as `turns/<n>/rounds/<k>-response.edn`;
+   the FINAL (text) response as `turns/<n>/response.edn`. blob-overwrite
+   semantics would otherwise keep only the last round; intermediate thinking
+   /tool_use blocks are exactly the reconstruction material (§ Why 1).
+4. **`:io/ref` rides the receipts that name a blob**: `eval!`'s `✓@N`
+   carries the response ref; each `⚡` dispatch receipt carries its
+   tool-result ref (computed pre-dispatch via locator determinism — the
+   pre-dispatch activity signal is kept). Battery's aggregate `N✓` receipt
+   carries none (per-turn coords derivable). `event-line` ignores extra
+   keys — zero surface changes.
+5. **`tape.edn` content ≡ the full session map** (`:slug :tape :config
+   :turns :created-at :forked-from :forked-at`) — recovery needs config to
+   honor configuration-completeness, not just messages. All EDN by the D3
+   registry invariant, so the snapshot is `pr-str`-safe by construction.
+6. **Registry taps** (`event-tap*`, `mutate-tap*` — defonce atoms, nil
+   default): registry stays trace-free; `trace/init!` injects, `close!`
+   retracts. Tap calls are try/catch-guarded IN registry (a foreign tap must
+   not break the event/mutation path; trace's own fns are loud via receipts
+   — the guard is the belt for the injected-fn seam itself).
+
 ## Estimate
 
 1–2 sessions (unchanged from the queue): trace ns ⊕ seam wiring ⊕ recovery
