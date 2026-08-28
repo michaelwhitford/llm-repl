@@ -45,8 +45,8 @@ before re-deriving; recall > re-derivation).
 
 **Human moves open:** v0.3.0 tag · anima `:local/root` ∨ `0.3.0-alpha` · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
-Container core `13d56e68` ≡ `57d5eed` — ONE arc behind (send-ring needs a
-rebuild to record in-container); no local daemon. Stale cores refuse.
+Container core CURRENT ≡ `218bf9b` (send-ring δ'd live over the wire) via
+docker/container.sh (UNTRACKED, pending review); no daemon. Stale cores refuse.
 
 **Next pickup:** agent-recipe-page (~half session, agent-ready) — the
 manual seam feeds a recipe, not a component (mcp-facade verdict).
