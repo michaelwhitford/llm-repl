@@ -32,7 +32,8 @@ the human's push/tag/anima moves.
 - **trace-durability** — the daemon has a flight recorder: `.llm-repl/`
   holds requests/responses (thinking survives), tool rounds ∧ results,
   `compact!` originals, `tape.edn` (auto-recovered at boot), transcript
-  JSONL (`:seq` continuous across restarts). Tapeless drivers receipt-only.
+  JSONL (`:seq` continuous across restarts). Tapeless ≡ receipt-only EXCEPT
+  failed sends: those capture ∧ their ✗ receipts carry `:io/ref` (AMENDED).
   CONTAINER-VERIFIED: `.llm-repl/` keys off CWD ≡ `/work`, so the recorder
   writes through the mount to the host ∧ `:io/ref` resolves from macOS —
   zero container-specific code ([container](knowledge/container.md)).
@@ -76,5 +77,4 @@ DURABLE now).
 ## Queue
 
 → `mementum/queue.md` (prospective memory). Nothing in progress. Front:
-extension-horizon-pilot → tapeless-error-capture (AMENDS a ratified
-decision) ∧ clojure-eval-per-form-values → agent-recipe-page.
+extension-horizon-pilot → clojure-eval-per-form-values → agent-recipe-page.

@@ -185,6 +185,54 @@
         (nil? n)    (tombstone! slug)
         (not= o n)  (tape! slug n)))))
 
+;; ── failures (the ONE capture the tapeless drivers still make) ─────────────
+
+(def ^:private failure-seq*
+  "Process-local tiebreaker. Blob semantics are last-wins, and two sends can
+   fail inside one millisecond (a trampoline! fan-out over a down backend
+   does exactly that) — the counter keeps every failure its own file."
+  (atom 0))
+
+(defn- edn-safe
+  "`x` if it round-trips pr-str → read-string, else its pr-str STRING.
+   An ex-data carrying a live object (an HTTP response, a socket) prints as
+   #object[…] and would poison every later `edn/read-string` of the whole
+   artifact. Degrade the VALUE, never the file."
+  [x]
+  (try (edn/read-string (pr-str x))
+       (catch Throwable _ (pr-str x))))
+
+(defn failure!
+  "Capture a FAILED send at nodes/<slug>/<visit>/failures/<ts>-<n>.edn —
+   the request that produced it ⊕ the error. Returns {:io/ref …} | nil.
+
+   NOT gated on `*capture?*`: this is the one capture the tapeless drivers
+   still make (design § ratified decisions 1, AMENDED 2026-08-28). The
+   receipt-only rule exists because a non-committing send has no assistant
+   tape index — N bounces off one prefix would collide on the same turn
+   number. A FAILED send has no tape consequence at all: it commits nothing,
+   so it collides with nothing, and it is precisely the send whose payload
+   you need. Gated on `enabled?` alone, exactly like `seed!`.
+
+   Found by USING the instrument: an armed bounce! died on an HTTP 400 four
+   tool-rounds deep and left a ✗ receipt that named the failure with no way
+   to see what had been sent. The receipt was the trace; the trace was not
+   enough."
+  [slug request t]
+  (when (enabled?)
+    (try
+      (let [{:keys [visit]} @state*
+            at   (System/currentTimeMillis)
+            file (str "failures/" at "-" (swap! failure-seq* inc) ".edn")]
+        (write-node-file! slug file
+                          {:at      at
+                           :error   (ex-message t)
+                           :ex-type (str (type t))
+                           :ex-data (edn-safe (ex-data t))
+                           :request (edn-safe request)})
+        {:io/ref (node-file-locator slug visit file)})
+      (catch Throwable t2 (trace-fail! (str "failure " slug) t2)))))
+
 ;; ── transcript (the event tap) ─────────────────────────────────────────────
 
 (defn receipt!

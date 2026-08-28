@@ -103,6 +103,19 @@
   [e]
   (registry/event! e))
 
+(defn- err-receipt
+  "The ✗ receipt for a failed send, carrying `:io/ref` when the send seam
+   captured the payload (`completion/send-traced!` puts the locator in
+   ex-data under `:trace/ref`; trace off ⇒ absent ⇒ receipt unchanged).
+
+   This closes the gap the whole failure-capture amendment exists for: a ✗
+   receipt used to NAME a failure with no way to reach what was sent. Now it
+   points AT it. `event-line` ignores extra keys (design § build decisions
+   4), so this is purely additive on every surface."
+  [kind slug t]
+  (cond-> {:kind kind :slug slug :msg (str "✗ " (ex-message t))}
+    (:trace/ref (ex-data t)) (assoc :io/ref (:trace/ref (ex-data t)))))
+
 (defn default-config
   "The interpreter config an unqualified session runs — a FUNCTION (D7:
    v0.2.0's `def` captured roster/default-model ∧ default-tools at load,
@@ -426,7 +439,7 @@
                   :repl/depth (count tape')
                   :repl/turns (:turns final)})))
            (catch Throwable t
-             (event! {:kind :eval! :slug slug :msg (str "✗ " (ex-message t))})
+             (event! (err-receipt :eval! slug t))
              {:repl/id    slug
               :repl/error (str "send failed: " (ex-message t))})))))))
 
@@ -509,7 +522,7 @@
           :repl/output out
           :repl/depth  (count (:tape sess))})   ; the FIXED depth — unchanged
        (catch Throwable t
-         (event! {:kind :bounce! :slug slug :msg (str "✗ " (ex-message t))})
+         (event! (err-receipt :bounce! slug t))
          {:repl/id slug :repl/error (str "send failed: " (ex-message t))})))))
 
 (defn ^{:manual "Try MANY inputs against the same fixed tape; nothing is saved."} trampoline!
@@ -534,7 +547,12 @@
                     (mapv (fn [input]
                             (try {:input input :output (bounce-output step prefix input)}
                                  (catch Throwable t
-                                   {:input input :error (str "send failed: " (ex-message t))})))
+                                   (cond-> {:input input
+                                            :error (str "send failed: " (ex-message t))}
+                                     ;; a fan-out over a down backend fails N
+                                     ;; times; each failure kept its own file
+                                     (:trace/ref (ex-data t))
+                                     (assoc :io/ref (:trace/ref (ex-data t)))))))
                           (vec inputs)))
          errs     (count (filter :error bounces))]
      (event! {:kind :tramp! :slug slug

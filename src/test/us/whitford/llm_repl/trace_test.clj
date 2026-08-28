@@ -52,6 +52,7 @@
     (is (nil? (trace/seed! :s {:slug :s})))
     (is (nil? (trace/tape! :s {:slug :s :tape []})))
     (is (nil? (trace/ref-for :s 4 "response")))
+    (is (nil? (trace/failure! :s {:m 1} (ex-info "boom" {}))))
     (is (nil? (trace/receipt! {:kind :note :msg "x"})))
     (is (nil? (trace/recover!)))
     (is (empty? @registry/events*) "no receipts from disabled no-ops")))
@@ -97,6 +98,47 @@
         (trace/tape! :s {:slug :s :tape []}))
       (is (some? (read-edn store "nodes/s/1/seed.edn")))
       (is (some? (read-edn store "nodes/s/1/tape.edn"))))))
+
+;; ── failures: the ONE capture the tapeless drivers still make ─────────────
+
+(deftest failure-capture-is-ungated-test
+  (let [{:keys [store]} (install-mem!)
+        ref (binding [trace/*capture?* false]
+              (trace/failure! :s {:messages [:probe]}
+                              (ex-info "HTTP 400" {:status 400})))]
+    (testing "captures INSIDE the tapeless binding — the amendment: a failed
+              send commits nothing, so it needs no tape index to collide on"
+      (is (some? ref))
+      (is (re-matches #"nodes/s/1/failures/\d+-\d+\.edn" (:io/ref ref))))
+    (testing "the artifact carries what the ✗ receipt could not name"
+      (let [blob (read-edn store (:io/ref ref))]
+        (is (= {:messages [:probe]} (:request blob)) "the payload")
+        (is (= "HTTP 400" (:error blob)))
+        (is (= {:status 400} (:ex-data blob)))
+        (is (int? (:at blob)))
+        (is (str/includes? (:ex-type blob) "ExceptionInfo"))))))
+
+(deftest failure-files-never-collide-test
+  (let [{:keys [store]} (install-mem!)
+        refs (mapv #(:io/ref (trace/failure! :s {:i %} (ex-info "boom" {})))
+                   (range 5))]
+    (testing "five failures inside one millisecond ≡ five files (blob writes
+              are last-wins; the process-local seq is the tiebreaker) — a
+              trampoline! fan-out over a down backend does exactly this"
+      (is (= 5 (count (distinct refs))))
+      (is (= #{0 1 2 3 4}
+             (set (map #(:i (:request (read-edn store %))) refs)))))))
+
+(deftest failure-degrades-unreadable-values-test
+  (let [{:keys [store]} (install-mem!)
+        ;; a live object: pr-str prints #object[…], read-string cannot read it
+        ref  (trace/failure! :s {:sock (Object.)} (ex-info "boom" {:conn (Object.)}))
+        blob (read-edn store (:io/ref ref))]
+    (testing "the FILE still round-trips as EDN; only the unreadable value
+              degrades to its printed form (poison the value, never the file)"
+      (is (= "boom" (:error blob)))
+      (is (string? (:request blob)))
+      (is (string? (:ex-data blob))))))
 
 (deftest capture-failure-is-receipt-never-throw-test
   (let [boom (reify eproto/ArtifactStore

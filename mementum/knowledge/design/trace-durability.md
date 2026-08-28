@@ -111,6 +111,10 @@ registry/event! (already the ONE       every receipt → transcript     transcri
 api/open!                              session config seed            nodes/<slug>/<visit>/seed.edn
 api/compact!                           pre-compaction original blob   turns/<n>/original.edn
                                         (durable twin of :original)
+completion/send-traced!, on THROW      the failed request ⊕ error      nodes/<slug>/<visit>/
+  (the ONE seam every physical           (:at :error :ex-type          failures/<ts>-<n>.edn
+  send passes through)                   :ex-data :request)            (AMENDED 2026-08-28 —
+                                         UNGATED by *capture?*          ungated; see decision 1)
 ```
 
 Receipts grow `:io/ref` — the receipt stream already points INTO the tree
@@ -214,6 +218,31 @@ Decisions layered on the ratification:
    They bind `trace/*capture?*` false; the receipt stream stays their trace
    (the standing S3* posture). `eval!`, `run-battery!`, and `ab!` arms get
    full capture. Provenance invariant unharmed: it concerns TAPE turns.
+
+   **AMENDED 2026-08-28 (ratified ∧ built same day) — except on failure.**
+   A FAILED send captures, tapeless or not: `trace/failure!` is gated on
+   `enabled?` alone. The reason receipt-only exists is *colliding turn
+   numbers*; a failed send commits nothing, so it collides with nothing, and
+   it is precisely the send whose payload you need. Its locator needs no
+   turn index — `failures/<ts>-<n>.edn`, the process-local `<n>` keeping a
+   `trampoline!` fan-out over a down backend from overwriting itself.
+
+   Found by USING the instrument, not by reading it: an armed `bounce!` died
+   on an HTTP 400 four tool-rounds deep and left `✗ llama.cpp API error:
+   HTTP 400` — enough to locate the failure, nothing to diagnose it with.
+   Three identical retries then passed and the leading hypothesis was
+   falsified, so the cause remains unknown; the request that would have
+   settled it was never written. The receipt was the trace, and the trace
+   was not enough.
+
+   Mechanism: `completion/send-traced!` is now the ONE seam every physical
+   send passes through (plain, tool-loop round, tool-loop final). On throw it
+   captures, then rethrows with the locator in `ex-data` under `:trace/ref`;
+   the drivers' `✗` receipts lift that to `:io/ref` (`err-receipt`), so the
+   receipt POINTS AT the payload. `ex-message` is preserved verbatim and the
+   original is the `cause` — every prior receipt and `:repl/error` string is
+   byte-identical. With tracing off the seam adds nothing: the original
+   throwable propagates untouched.
 2. **`drop!` writes a tombstone** (`{:trace/dropped true :at ms}` over
    `tape.edn`) — without it, auto-recovery would resurrect deliberately
    dropped sessions on every daemon restart. `recover!` skips tombstones

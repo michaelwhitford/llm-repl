@@ -144,6 +144,28 @@
           empty-completion-marker)
       text)))
 
+(defn- send-traced!
+  "The ONE send seam — dispatch `request` at `backend`, await, return the
+   Response. Every physical send in this ns goes through here.
+
+   On failure: capture the request ⊕ the error (`trace/failure!` — the one
+   capture the tapeless drivers still make, design § ratified decisions 1 as
+   AMENDED), then rethrow carrying the artifact's locator under
+   `:trace/ref` so the driver's ✗ receipt can point AT the payload instead of
+   merely naming the failure.
+
+   `ex-message` is preserved verbatim and the original is the `cause`, so
+   every existing receipt and `:repl/error` string is byte-identical. When
+   tracing is OFF there is no ref and the original throwable is rethrown
+   untouched — the seam adds nothing to the disabled path."
+  [backend slug request]
+  (try
+    (p/await! (proto/send-turn backend request))
+    (catch Throwable t
+      (if-let [ref (:io/ref (trace/failure! slug request t))]
+        (throw (ex-info (ex-message t) (assoc (ex-data t) :trace/ref ref) t))
+        (throw t)))))
+
 (defn plain-complete
   "config ⊕ slug → (fn [tape] → reply-text): build the request, send it at the
    backend seam through the roster backend (built from the config file), await,
@@ -162,7 +184,7 @@
           request  (build-request config slug tape)
           turn     (count tape)]
       (trace/request! slug turn request (:text (last tape)))
-      (let [response (p/await! (proto/send-turn backend request))]
+      (let [response (send-traced! backend slug request)]
         (trace/capture! slug turn "response" response (assistant-text response))
         (loud-final-text response slug)))))
 
@@ -330,11 +352,10 @@
             ;; clobber what replay wants (the real prompt)
             _           (trace/request! slug turn base (:text (last tape)))
             send!       (fn [messages]
-                          (p/await! (proto/send-turn backend (assoc base :messages messages))))
+                          (send-traced! backend slug (assoc base :messages messages)))
             send-final! (fn [messages]
-                          (p/await! (proto/send-turn
-                                     backend
-                                     (-> base (dissoc :tools) (assoc :messages messages)))))]
+                          (send-traced! backend slug
+                                        (-> base (dissoc :tools) (assoc :messages messages))))]
         (loop [messages (:messages base)
                bounce   0]
           (let [response (send! messages)

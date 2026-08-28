@@ -72,6 +72,15 @@
 (defn- empty-response []
   {:stop-reason :end_turn :content [] :usage {} :model "stub"})
 
+(defn- boom-backend
+  "The down-backend twin of `stub-backend`: records the request that rode the
+   wire, then throws `t`. What an HTTP 400 looks like from in here."
+  [requests-atom t]
+  (reify proto/LLMBackend
+    (send-turn [_ request]
+      (swap! requests-atom conj request)
+      (throw t))))
+
 ;; ── build-request (pure) ─────────────────────────────────────────────────
 
 (deftest build-request-messages-projection-test
@@ -366,6 +375,72 @@
     (testing "no blobs — the tapeless drivers' receipt-only contract"
       (is (nil? (read-blob store "nodes/s/1/turns/1/request.edn")))
       (is (nil? (read-blob store "nodes/s/1/turns/1/response.edn"))))))
+
+;; ── failed sends: the ONE capture the tapeless drivers still make ─────────
+
+(deftest failed-send-captures-even-when-tapeless-test
+  (let [store    (install-trace!)
+        boom     (ex-info "llama.cpp API error: HTTP 400" {:status 400})
+        requests (atom [])
+        ex       (with-redefs [completion/session-backend (fn [_ _] (boom-backend requests boom))]
+                   (binding [trace/*capture?* false]
+                     (try ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+                           (tape/append-user [] "hi"))
+                          nil
+                          (catch Throwable t t))))]
+    (testing "the send still THROWS — capture never swallows a failure"
+      (is (some? ex)))
+    (testing "ex-message verbatim ∧ the original as cause: every existing
+              receipt and :repl/error string stays byte-identical"
+      (is (= "llama.cpp API error: HTTP 400" (ex-message ex)))
+      (is (identical? boom (ex-cause ex))))
+    (testing "the rethrow carries the locator, and the artifact holds the
+              request the ✗ receipt could not name — captured despite
+              *capture?* false (a failed send commits nothing, so the
+              colliding-turn reason for receipt-only does not apply)"
+      (let [ref (:trace/ref (ex-data ex))]
+        (is (re-matches #"nodes/s/1/failures/\d+-\d+\.edn" ref))
+        (let [blob (read-blob store ref)]
+          (is (= (first @requests) (:request blob)) "byte-for-byte what rode the wire")
+          (is (= {:status 400} (:ex-data blob))))))))
+
+(deftest failed-send-mid-tool-loop-captures-the-failing-round-test
+  (let [store     (install-trace!)
+        boom      (ex-info "llama.cpp API error: HTTP 400" {:status 400})
+        responses (atom [(tool-use-response "tu1" "test_echo" {:x 1})])
+        requests  (atom [])
+        ;; round 0 succeeds, round 1 throws — the live shape that motivated
+        ;; this: an armed bounce! died several tool-rounds deep
+        flaky     (reify proto/LLMBackend
+                    (send-turn [_ request]
+                      (swap! requests conj request)
+                      (if-let [r (first @responses)]
+                        (do (swap! responses rest) r)
+                        (throw boom))))
+        config    {:model :m :preamble? false :system nil :tools [:test/echo]
+                   :orientation "orient {slug}"}
+        ex        (with-redefs [completion/session-backend (fn [_ _] flaky)]
+                    (try ((completion/tool-complete config :s) [])
+                         nil
+                         (catch Throwable t t)))]
+    (testing "the FAILING ROUND's request is captured — not merely the base
+              request, which first-write-wins had already kept"
+      (let [blob (read-blob store (:trace/ref (ex-data ex)))]
+        (is (= (last @requests) (:request blob)))
+        (is (= 2 (count (:messages (:request blob))))
+            "assistant(tool_use) ⊕ user(tool_result) — the mid-loop round")))))
+
+(deftest failed-send-untraced-rethrows-the-original-test
+  (let [boom (ex-info "boom" {:x 1})
+        ex   (with-redefs [completion/session-backend (fn [_ _] (boom-backend (atom []) boom))]
+               (try ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+                     (tape/append-user [] "hi"))
+                    nil
+                    (catch Throwable t t)))]
+    (testing "tracing OFF ⇒ the seam adds NOTHING: the identical throwable
+              propagates, no wrapper, no :trace/ref"
+      (is (identical? boom ex))
+      (is (nil? (:trace/ref (ex-data ex)))))))
 
 (deftest tool-complete-captures-loop-test
   (let [store     (install-trace!)

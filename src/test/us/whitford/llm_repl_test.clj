@@ -43,6 +43,13 @@
   [_config _slug]
   (fn [_tape] (throw (ex-info "backend unreachable" {}))))
 
+(defn- boom-backend
+  "A backend whose every send throws — drives the REAL completion path (no
+   injected :complete-fn) so the trace seam actually runs."
+  [t]
+  (reify proto/LLMBackend
+    (send-turn [_ _] (throw t))))
+
 (defn- interloping-complete
   "THE DETERMINISTIC RACE LOCK: while THIS completion runs (between eval!'s
    user-turn mutate! and its assistant-turn mutate!), append an interloper
@@ -369,6 +376,40 @@
     (testing "the receipts exist all the same"
       (is (some #(= :bounce! (:kind %)) @registry/events*))
       (is (some #(= :tramp! (:kind %)) @registry/events*)))))
+
+(deftest tapeless-FAILURE-captures-and-receipt-carries-the-ref-test
+  (let [store (install-trace!)
+        boom  (ex-info "llama.cpp API error: HTTP 400" {:status 400})]
+    (repl/open! :s)
+    (let [r (with-redefs [completion/session-backend (fn [_ _] (boom-backend boom))]
+              (repl/bounce! :s "probe" {:model :m :preamble? false :system nil}))]
+      (testing "error-as-data unchanged — drivers still never throw"
+        (is (= "send failed: llama.cpp API error: HTTP 400" (:repl/error r))))
+      (testing "the exception to receipt-only: a FAILED tapeless send commits
+                nothing, so no turn number can collide — it captures"
+        (let [e (last (filter #(= :bounce! (:kind %)) @registry/events*))]
+          (is (str/includes? (:msg e) "✗"))
+          (testing "and the ✗ receipt POINTS AT the payload (the whole ticket:
+                    it used to name the failure and nothing else)"
+            (is (re-matches #"nodes/s/1/failures/\d+-\d+\.edn" (:io/ref e)))
+            (let [blob (read-blob store (:io/ref e))]
+              (is (some? (:messages (:request blob))) "the request that failed")
+              (is (= {:status 400} (:ex-data blob))))))))))
+
+(deftest trampoline-failures-each-keep-their-own-file-test
+  (let [store (install-trace!)
+        r     (do (repl/open! :s)
+                  (with-redefs [completion/session-backend
+                                (fn [_ _] (boom-backend (ex-info "down" {})))]
+                    (repl/trampoline! :s ["p1" "p2" "p3"]
+                                      {:model :m :preamble? false :system nil})))
+        refs  (mapv :io/ref (:repl/bounces r))]
+    (testing "a fan-out over a down backend fails N times inside the same
+              millisecond — N distinct files, none overwritten"
+      (is (= 3 (count (distinct refs))))
+      (is (every? #(some? (read-blob store %)) refs)))
+    (testing "per-bounce error-as-data survives alongside the refs"
+      (is (every? #(str/includes? (:error %) "down") (:repl/bounces r))))))
 
 (deftest compact!-captures-durable-original-test
   (let [store (install-trace!)
