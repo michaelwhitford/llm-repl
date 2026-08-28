@@ -39,18 +39,22 @@ closes tui-dead-daemon-silent) · D5 naming lock ≡ round-trip test (step 6) ·
 prompt stack FULLY config, uniform chain, closed schema ⊕ :ext (step 7,
 🎯 30c6f78 — anima swaps the whole stack for nucleus lambda prompts).
 
-**Human moves now open:** push main (first CI run) · v0.3.0 tag when ready
-(release.yml deploys full/RC only; library-contract hardens at first RC) ·
-anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
+**Human moves now open:** RATIFY
+[design/trace-durability](knowledge/design/trace-durability.md) (5 open
+questions listed — proposal drafted 2026-08-28) · push main (first CI run) ·
+v0.3.0 tag when ready (release.yml deploys full/RC only; library-contract
+hardens at first RC) · anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
 
-**Next pickup (agent):** queue front — tape-persistence ∨ trace-durability
-∨ agent-recipe-page. Compaction arc COMPLETE ∧ synthesized →
-[knowledge/compaction](knowledge/compaction.md) (one-shot with explicit
-size budget; over-compaction CONFABULATES silently → validation ≡
-arm-diff, λ ≡ keep binders, :original ≡ ground truth). trace-durability
-gained urgency: durable traces ≡ the audit surface for silent
-confabulation. Live tapes from the arc (:ouro, :subject ⊕ arms) still on
-the local daemon if it survives — browsable, not precious.
+**Next pickup (agent):** trace-durability BUILD once ratified (🔵 queue
+front — capture layer explored: all 7 escapement nses bb-verified from the
+1.0.1 jar, zero new deps; tape-persistence proposed subsumed; mapping ∧
+seams in the proposal) ∨ agent-recipe-page. Compaction arc COMPLETE ∧
+synthesized → [knowledge/compaction](knowledge/compaction.md) (one-shot
+with explicit size budget; over-compaction CONFABULATES silently →
+validation ≡ arm-diff, λ ≡ keep binders, :original ≡ ground truth) — the
+proposal's durable-trace ≡ the arm-diff ground truth that outlives the
+daemon. Live tapes from the arc (:ouro, :subject ⊕ arms) still on the
+local daemon if it survives — browsable, not precious.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 

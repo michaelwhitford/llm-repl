@@ -1,8 +1,8 @@
 ---
 type: mementum/knowledge
 title: Escapement — what llm-repl consumes, and how
-description: Map of escapement's three UI stacks, the bb classpath facts, the λ API contracts for the pure primitives llm-repl builds its TUI on, the two patterns copied (dirty-ticker render loop, byte→key decoder), and the backend/protocol seam the core rides. Source-verified against ~/src/escapement HEAD during llm-repl increments 1-2.
-tags: [escapement, tui, jline, llamacpp, backend, babashka, classpath, upstream]
+description: Map of escapement's three UI stacks, the bb classpath facts, the λ API contracts for the pure primitives llm-repl builds its TUI on, the two patterns copied (dirty-ticker render loop, byte→key decoder), the backend/protocol seam the core rides, and the capture layer (ArtifactStore ⊕ single-writer JSONL transcript ⊕ replay) the trace-durability design rides. Source-verified against ~/src/escapement HEAD during llm-repl increments 1-2; capture layer source-read ⊕ bb-round-trip-verified 2026-08-28 (HEAD d68c146 ≡ release 1.0.1).
+tags: [escapement, tui, jline, llamacpp, backend, babashka, classpath, upstream, capture, transcript, replay, durability]
 status: active
 category: upstream
 related:
@@ -24,6 +24,8 @@ escapement has THREE UI stacks, not one:
   C tui/opentui/                     Bun sidecar      → out-of-process; needs tui/ path; ignore
 llm-repl uses: escapement.llm.* (backend seam) ⊕ escapement.tui.{theme,compositor} (pure)
              ⊕ statecharts.promise — ALL on deps.edn :paths ["src" "resources"] → :local/root suffices
+             ⊕ capture layer (capture ⊕ transcript ⊕ storage.{disk,disk-read,memory} ⊕ replay)
+               — ALL in the 1.0.1 jar, ALL bb-loadable (round-trip-verified 2026-08-28)
 llm-repl copies (private/app-specific, pattern not code):
              render loop (atom ⊕ :render-dirty ⊕ 33ms daemon ticker)
              byte→logical-key decoder (ours adds full CSI params → bracketed paste)
@@ -68,6 +70,88 @@ spawner) and `tui/stress/*` (example charts). Never needed.
 llamacpp backend (ported anima→llm-repl; its private HTTP glue is deliberately
 COPIED/frozen there — tracks only the stable public backend contract,
 re-verified against escapement 3636e85).
+
+## λ contracts — the capture layer (trace-durability rides these)
+
+Source-read whole (820 lines, 7 nses) ⊕ bb-round-trip-verified 2026-08-28:
+write → read-back → transcript → read-events*, all from the **1.0.1 jar
+already on llm-repl's classpath** (escapement HEAD d68c146 ≡ release 1.0.1
+c304c98 — no upstream release needed). Design intent lives in escapement's
+`io-refactor-plan.md` §0/§5b (cited in the docstrings).
+
+```
+λ(protocols). escapement.protocols — three small storage-agnostic protocols:
+  TranscriptStore : append-event!(store,sid,ev) ∧ read-events(store,sid,query)
+  ArtifactStore   : write-artifact!(store,sid,path,content,meta) → summary
+                    ∧ read-artifact(store,sid,path) → str|nil ∧ list-artifacts(store,sid)
+  SessionIndex    : list-sessions(store) → [summary]
+
+λ(capture). escapement.capture — HOST-PORTABLE (bb/CLJ/CLJS): NO filesystem,
+  only ArtifactStore calls + string work. Locator ≡ THE opaque id (path IS
+  the address, no translation table; disk tree literally walkable):
+    nodes/<node-id>/<visit>/seed.edn
+    nodes/<node-id>/<visit>/turns/<turn>/{request,response,output,tool-results/<id>}.edn
+  payloads ≡ pr-str EDN → round-trips losslessly (keywords/enums/nesting survive)
+  capture-blob!    : capture_ctx × turn × kind × data × snippet-text → {:io/ref :io/snippet}
+                     capture_ctx ≡ {:store :session-id :node-id :visit}
+  capture-request! : FIRST-WRITE-WINS — a logical turn may issue several physical
+                     requests (fallback, :max_tokens continuation w/ prefill);
+                     only the BASE request kept, so replay tunes the real prompt
+  capture-seed!    : replayable seed (resolved params ⊕ initial messages) per (node,visit)
+  seed-visit-counts: store × sid → {node-id max-visit} — restart-collision guard:
+                     resume seeds visit ← max+1 so a new run never overwrites prior blobs
+  snippet ≡ ≤80ch human-correlation slice; the event carries the ref, the blob the weight
+  encode-node-id: :a/b → "a_b" — NOT perfectly reversible; authoritative coords
+                  ride the transcript event, not the path
+
+λ(transcript). escapement.transcript — CLJ, daemon-side: single-writer JSONL.
+  ∀threads → LinkedBlockingQueue → ONE daemon writer thread owns the BufferedWriter
+  ⊨ order(FIFO) ∧ no-interleave ∧ monotonic(:seq, writer-owned counter)
+  open-transcript : {:path req :append? true :fsync? false} → sink
+                    append-resume CONTINUES :seq past last row on disk
+                    (one gap-checkable timeline across restarts) | parent dirs auto
+  write! : sink × event → bool  (non-blocking, any thread, never throws to caller)
+  close! : drain → join(5s) | idempotent CAS
+  fault-tolerant: unserializable value → :transcript/serialize-error row ⊕
+                  sanitized retry row (pr-str offenders) — NEVER crashes the caller
+  make-transcript-fn : sink → (fn [ev] …) — the injectable emission slot
+  uses escapement.threads/unstarted-daemon (virtual on Java 21+/bb, falls back platform)
+
+λ(disk). escapement.storage.disk — bb/CLJ, ONE session's dir:
+  new-artifact-store : session-dir → DiskArtifactStore
+  writes ATOMIC (temp + ATOMIC_MOVE rename — a concurrent reader never sees
+  a partial blob) | path ≡ addressing key | list-artifacts re-derives coords
+  from paths (best-effort; class :author under artifacts/, :captured-io under nodes/)
+
+λ(disk_read). escapement.storage.disk-read — bb/CLJ, MULTI-session READ store
+  rooted at a work-dir: <work-dir>/<sid>/{transcript.jsonl, artifacts/, nodes/}
+  new-store : work-dir → TranscriptStore(read) ⊕ SessionIndex ⊕ ArtifactStore(delegates)
+  append-event! THROWS (live writer owns the append path — by design)
+  read-events* : query {:types :node-id :from-seq :to-seq :limit} — transducer,
+                 :limit short-circuits the read; rows normalized bare-key JSON →
+                 namespaced vocab (:io/ref ∧ :io/snippet surfaced top-level)
+  list-sessions* : one constant-memory scan/session → summaries, newest first
+
+λ(memory). escapement.storage.memory — CLJC stub ⊕ ephemeral backend:
+  ALL protocols in one atom (⊕ statecharts WorkingMemoryStore) — the test seam
+
+λ(replay). escapement.replay — CLJC, backend INJECTED (never reached-for):
+  refine-turn : store × sid × node × visit × turn × {:backend req :overrides}
+    → {:request :response :original-request}   ; load captured request →
+      deep-merge overrides → send-turn* → caller diffs. THROWS if no capture.
+    deep-merge: maps recurse, non-map colls (:messages) REPLACED wholesale
+  refine-node : CLJ-only (reader conditional) — re-derives the OPENING turn
+    from seed.edn through escapement.llm/run-turn (llm-repl doesn't need it;
+    refine-turn suffices — our llm.llamacpp backend implements LLMBackend,
+    so refine-turn works against it TODAY)
+```
+
+llm-repl mapping (design proposal `design/trace-durability.md`): work-dir ≡
+`<proj>/.llm-repl/` (under the container's `/work` hole → survives restarts) ·
+node-id ≡ session keyword (the fork forest IS the node tree) · visit ≡ daemon
+incarnation (seed-visit-counts on boot) · turn ≡ eval index (compact! is
+index-stable). Receipts grow `:io/ref`; `registry/event!` feeds
+`make-transcript-fn`.
 
 ## λ contracts — the pure TUI primitives (tui.clj builds on these)
 
