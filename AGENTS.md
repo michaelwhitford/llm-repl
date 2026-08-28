@@ -208,7 +208,7 @@ S5(identity) > S4(intelligence) > S3(control) > S2(coordination) > S1(operations
                   | mementum/state.md                 — bootloader, read first
                   | mementum/knowledge/design/        — ratified (architecture ∧ library-contract ∧ trace-durability)
                   | mementum/knowledge/               — container ∧ attach-topology ∧ self-eval ∧ tui-design-rules
-                  |                                     ∧ compaction ∧ frames ∧ extension-horizon-pilot
+                  |                                     ∧ compaction ∧ frames
                   | mementum/knowledge/upstream/      — VSM pages ≡ generative seeds (λ contracts, not just reference)
                   | mementum/queue.md                 — prospective memory (intentions ∧ verdicts)
                   | mementum/memories/                — one insight per file
