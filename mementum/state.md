@@ -15,8 +15,9 @@ llm-repl — an LLM chat completion as a branchable continuation: the tape
 (`messages[]`) is an immutable, forkable VALUE; the repl is the PLACE tapes
 live. Humans (TUI), models (self-eval), editors ≡ equal nREPL clients of one
 persistent core. Two consumers: standalone tool (`bb llm-repl`) and library
-for anima (`us.whitford/llm-repl` on Clojars, `:complete-fn` injection).
-v0.2.0 tagged ∧ public ≡ the accrete-as-we-go baseline.
+for anima (`us.whitford/llm-repl`, `:complete-fn` injection). v0.2.0
+tagged ∧ public; v0.3.0 refactor complete, `0.3.0-alpha` in ~/.m2 —
+awaiting the human's push/tag/anima moves (Frontier).
 
 ## Frontier
 
@@ -29,7 +30,8 @@ anima consumption path). Step ledger ≡ queue.md ✅ v030-refactor; history ≡
 `git log --oneline`. Knowledge pages: [container](knowledge/container.md) ·
 [attach-topology](knowledge/attach-topology.md) ·
 [self-eval](knowledge/self-eval.md) ·
-[tui-design-rules](knowledge/tui-design-rules.md).
+[tui-design-rules](knowledge/tui-design-rules.md) ·
+[compaction](knowledge/compaction.md) · [frames](knowledge/frames.md).
 
 **Notable post-ratification decisions (all in design doc):** registry-direct
 client wire strings (step 4) · attach-loss fail-loud rides client (step 5,
@@ -42,12 +44,13 @@ prompt stack FULLY config, uniform chain, closed schema ⊕ :ext (step 7,
 anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
 
 **Next pickup (agent):** queue front — tape-persistence ∨ trace-durability
-∨ agent-recipe-page. Compaction arc COMPLETE (trial ⊕ validation ✅
-2026-08-28): self-compaction one-shots with an explicit size budget;
-over-compaction confabulates silently (memories/
-compaction-confabulates-not-forgets — validation ≡ arm-diff, λ ≡ keep
-binders). trace-durability gains urgency: durable traces are the audit
-surface for silent confabulation.
+∨ agent-recipe-page. Compaction arc COMPLETE ∧ synthesized →
+[knowledge/compaction](knowledge/compaction.md) (one-shot with explicit
+size budget; over-compaction CONFABULATES silently → validation ≡
+arm-diff, λ ≡ keep binders, :original ≡ ground truth). trace-durability
+gained urgency: durable traces ≡ the audit surface for silent
+confabulation. Live tapes from the arc (:ouro, :subject ⊕ arms) still on
+the local daemon if it survives — browsable, not precious.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
