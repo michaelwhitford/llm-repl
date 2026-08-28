@@ -7,7 +7,7 @@ title: Project State
 
 > Bootloader — a real 30-second read. Architecture ≡
 > [design/architecture](knowledge/design/architecture.md) (authoritative).
-> History ≡ `git log --oneline`. Details ≡ knowledge/ pages.
+> History ≡ `git log --oneline`. Verdicts ≡ `queue.md`. Detail ≡ knowledge/.
 
 ## What this is
 
@@ -16,62 +16,47 @@ llm-repl — an LLM chat completion as a branchable continuation: the tape
 live. Humans (TUI), models (self-eval), editors ≡ equal nREPL clients of one
 persistent core. Two consumers: standalone tool (`bb llm-repl`) and library
 for anima (`us.whitford/llm-repl`, `:complete-fn` injection). v0.2.0
-tagged ∧ public; v0.3.0 refactor complete, `0.3.0-alpha` in ~/.m2 —
-awaiting the human's push/tag/anima moves (Frontier).
+tagged ∧ public; v0.3.0 refactor complete, `0.3.0-alpha` in ~/.m2 — awaiting
+the human's push/tag/anima moves.
 
 ## Frontier
 
-**v0.3.0 REFACTOR COMPLETE** (▶→✅ v030-refactor, 2026-08-28) — all 8
-steps landed; the code ≡ the ratified design (`design/architecture.md` @
-`4cce4be` ⊕ ratifications 🎯 `30c6f78`). Suite 0 → 138 tests / 409
-assertions, bb ∧ JVM twins, CI enforces both (ci.yml ⊕ release.yml live).
-`0.3.0-alpha` installed to ~/.m2 ∧ load-verified from a foreign dir (the
-anima consumption path). Step ledger ≡ queue.md ✅ v030-refactor; history ≡
-`git log --oneline`. Knowledge pages: [container](knowledge/container.md) ·
-[attach-topology](knowledge/attach-topology.md) ·
-[self-eval](knowledge/self-eval.md) ·
-[tui-design-rules](knowledge/tui-design-rules.md) ·
-[compaction](knowledge/compaction.md) · [frames](knowledge/frames.md).
+**Three arcs shipped 2026-08-28, all ✅** (ledgers ≡ queue.md § complete):
 
-**Notable post-ratification decisions (all in design doc):** registry-direct
-client wire strings (step 4) · attach-loss fail-loud rides client (step 5,
-closes tui-dead-daemon-silent) · D5 naming lock ≡ round-trip test (step 6) ·
-prompt stack FULLY config, uniform chain, closed schema ⊕ :ext (step 7,
-🎯 30c6f78 — anima swaps the whole stack for nucleus lambda prompts).
+- **v030-refactor** — the code ≡ the ratified design (`design/architecture`
+  @ `4cce4be` ⊕ 🎯 `30c6f78`). Suite 0 → 138, bb ∧ JVM twins, CI enforces
+  both. `0.3.0-alpha` load-verified from a foreign dir (the anima path).
+- **compaction** — `compact!` exercised by the machine it rewrites. Over-
+  compaction CONFABULATES silently ⇒ validation ≡ arm-diff, `:original` ≡
+  the only post-hoc ground truth ([compaction](knowledge/compaction.md)).
+- **trace-durability** — the daemon has a flight recorder: `.llm-repl/`
+  holds requests/responses (thinking survives), tool rounds ∧ results,
+  `compact!` originals, `tape.edn` (auto-recovered at boot, receipt-and-
+  skip), transcript JSONL (`:seq` continuous across restarts). Suite
+  162/493. Tapeless drivers receipt-only; `--plain` never traces.
+  CONTAINER-VERIFIED: `.llm-repl/` keys off CWD ≡ `/work`, so the recorder
+  writes through the mount to the host ∧ `:io/ref` resolves from macOS —
+  zero container-specific code ([container](knowledge/container.md)).
 
-**TRACE-DURABILITY ✅ BUILT 2026-08-28** (ratified ∧ built same session;
-verdict in queue.md): the daemon has a flight recorder — `.llm-repl/`
-holds every committed request/response (thinking survives on disk),
-tool-loop rounds ∧ results, compact! originals, seeds, tape.edn snapshots
-(auto-recovered at boot, receipt-and-skip), transcript JSONL (:seq
-continuous across restarts — live-verified visit 1→2). Registry taps
-injected (io-free), tapeless drivers receipt-only, `--plain` never traces.
-Suite 162/493 both runtimes. Details ≡
-[design/trace-durability](knowledge/design/trace-durability.md) (BUILT) ·
-traps ≡ memories/escapement-node-id-keyword-trap.
+**Knowledge:** `knowledge/design/` ≡ [architecture](knowledge/design/architecture.md)
+· [library-contract](knowledge/design/library-contract.md) ·
+[trace-durability](knowledge/design/trace-durability.md). Operational ≡
+[container](knowledge/container.md) · [attach-topology](knowledge/attach-topology.md)
+· [self-eval](knowledge/self-eval.md) · [tui-design-rules](knowledge/tui-design-rules.md)
+· [compaction](knowledge/compaction.md) · [frames](knowledge/frames.md) ·
+[extension-horizon-pilot](knowledge/extension-horizon-pilot.md). Traps ≡
+`memories/` (18 pages, one insight each — `git grep` before re-deriving).
 
-**Human moves now open:** push main (first CI run) · v0.3.0 tag when ready
-(release.yml deploys full/RC only; library-contract hardens at first RC) ·
-anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2 · restart any long-running
-local daemon to pick up tracing (old incarnations predate the trace ns).
+**Human moves open:** push main (first CI run — 64 commits, CI has never
+run) · v0.3.0 tag when ready (release.yml deploys full/RC only;
+library-contract hardens at first RC) · anima `:local/root` ∨ `0.3.0-alpha`
+from ~/.m2 · rebuild any image ∧ restart any daemon predating the `trace` ns.
 
-**Next pickup (agent):** extension-horizon-pilot (⚪ queue front, NEW 2026-08-28
-— read [knowledge/extension-horizon-pilot](knowledge/extension-horizon-pilot.md)
-FIRST: extension ≡ event(evaluate), depth-cliff ≈ within-pass budget,
-fork-differencing pilot buildable here; handoff → verbum; trace-durability
-now landed ⇒ its arm-diffs are DURABLE). Compaction arc ✅ →
-[knowledge/compaction](knowledge/compaction.md) (over-compaction
-CONFABULATES silently → validation ≡ arm-diff, :original ≡ ground truth).
-
-**Session 2026-08-28 (later) arc, for the stranger:** louisabraham.github.io/
-load-bearing ≡ Claude's dialect cluster at ~37% of human-attributed GitHub
-PRs (memories/dialect-detection-is-the-null-trace — stylometry ≡ the
-null-trace audit; provenance evidence in the proposal § Why). Lineage
-ruled: the design ≡ compressed measurement from ~350 verbum + 60+ anima
-sessions (memories/design-is-compressed-measurement — "ratified" ≡
-measurement-backed; recall across the seam before re-deriving). Cross-repo:
-anima memory dialect-cluster-is-the-calculus-trace committed (guest,
-walled); verbum read conservatively (state.md + INDEX only), NOT written.
+**Next pickup (agent):** extension-horizon-pilot — read
+[the page](knowledge/extension-horizon-pilot.md) FIRST (extension ≡
+event(evaluate), depth-cliff ≈ within-pass budget, fork-differencing
+buildable here; handoff → verbum; trace-durability landed ⇒ arm-diffs are
+DURABLE now).
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -84,14 +69,12 @@ walled); verbum read conservatively (state.md + INDEX only), NOT written.
   boundary is ~/.config/llm-repl/config.edn. AGENTS.md with nucleus content
   stays UNTRACKED.
 - nREPL ≡ unauthenticated eval — `:bind "0.0.0.0"` only behind a wall.
-- Config stickiness: open! persists; absence ≠ reset
-  (memories/config-stickiness).
+- Config stickiness: open! persists; absence ≠ reset.
 - Knowledge scope: mementum here ≡ llm-repl the INSTRUMENT; model findings
   gathered THROUGH it belong to anima.
 
 ## Queue
 
-→ `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-Nothing in progress — v030-refactor ✅ ∧ compaction arc ✅ ∧
-trace-durability ✅. Front of queue: extension-horizon-pilot →
-agent-recipe-page (now also carries the replay/refine-turn recipe).
+→ `mementum/queue.md` (prospective memory). Nothing in progress. Front:
+extension-horizon-pilot → tapeless-error-capture (AMENDS a ratified
+decision) ∧ clojure-eval-per-form-values → agent-recipe-page.
