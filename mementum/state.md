@@ -20,17 +20,17 @@ public; v0.3.0 complete, `0.3.0-alpha` in ~/.m2 — tag ∧ anima are the human'
 
 ## Frontier
 
-**Six arcs shipped 2026-08-28** (ledgers ≡ queue.md § complete); CI is real
+**Seven arcs shipped 2026-08-28** (ledgers ≡ queue.md § complete); CI is real
 — twin suite ∧ kondo ∧ schema validation, green on ubuntu.
 
 - **v030-refactor** — code ≡ the ratified design (@`4cce4be` ⊕ 🎯`30c6f78`).
   The suite was born here: 0 → 179 (bb ∧ JVM twins, CI enforces).
 - **compaction** — over-compaction CONFABULATES silently ⇒ validation ≡
   arm-diff, `:original` ≡ the only post-hoc ground truth.
-- **trace-durability ⊕ tapeless-error-capture** — `.llm-repl/` ≡ a flight
-  recorder keyed off CWD ≡ `/work`; failed sends ALWAYS capture, ✗ receipts
-  carry `:io/ref`. Payloads are the `eval!` path ONLY (→ ⚪ tapeless-success-
-  capture). The HTTP 400 behind it: still UNEXPLAINED.
+- **trace-durability ⊕ error-capture ⊕ send-ring** — `.llm-repl/` ≡ flight
+  recorder keyed off CWD ≡ `/work`; failed sends ALWAYS capture (✗ receipts
+  carry `:io/ref`); the SEND-RING (memory-only RATIFIED, crash-loss deliberate)
+  records EVERY send — tapeless ✓ closed. Query ≡ eval. HTTP 400: UNEXPLAINED.
 - **registry-fetch-projection** — the wire carries `registry/view` (index ⊕
   the FOCUSED tape, ONE deref), never every tape: 623.8KB → 36.0KB at n=300.
   Payload ∧ sockets ∧ the DECLINED push protocol ≡ knowledge/wire-protocol.md.
@@ -45,11 +45,11 @@ before re-deriving; recall > re-derivation).
 
 **Human moves open:** v0.3.0 tag · anima `:local/root` ∨ `0.3.0-alpha` · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
-Container core CURRENT: image `13d56e68` ≡ `57d5eed` (per-form echo in);
-`:scratch` recovered @4, visit 4; no local daemon. Stale cores refuse.
+Container core `13d56e68` ≡ `57d5eed` — ONE arc behind (send-ring needs a
+rebuild to record in-container); no local daemon. Stale cores refuse.
 
-**Next pickup:** tapeless-success-capture wants its human D-decision
-(record-always ring: accept no-crash-safety?) — then agent-recipe-page.
+**Next pickup:** agent-recipe-page (~half session, agent-ready) — the
+manual seam feeds a recipe, not a component (mcp-facade verdict).
 Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 `/work` — **NOT this repo**. Probing a model through it? Read
 `memories/probe-hygiene-tools-armed` FIRST.
@@ -77,4 +77,4 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front:
-tapeless-success-capture (human D) → agent-recipe-page → manual-malli.
+agent-recipe-page → manual-malli-schemas → split-pane-tape-view.
