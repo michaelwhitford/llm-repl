@@ -45,16 +45,26 @@ questions listed — proposal drafted 2026-08-28) · push main (first CI run) ·
 v0.3.0 tag when ready (release.yml deploys full/RC only; library-contract
 hardens at first RC) · anima `:local/root` ∨ `0.3.0-alpha` from ~/.m2.
 
-**Next pickup (agent):** trace-durability BUILD once ratified (🔵 queue
+**Next pickup (agent):** (a) trace-durability BUILD once ratified (🔵 queue
 front — capture layer explored: all 7 escapement nses bb-verified from the
 1.0.1 jar, zero new deps; tape-persistence proposed subsumed; mapping ∧
-seams in the proposal) ∨ agent-recipe-page. Compaction arc COMPLETE ∧
-synthesized → [knowledge/compaction](knowledge/compaction.md) (one-shot
-with explicit size budget; over-compaction CONFABULATES silently →
-validation ≡ arm-diff, λ ≡ keep binders, :original ≡ ground truth) — the
-proposal's durable-trace ≡ the arm-diff ground truth that outlives the
-daemon. Live tapes from the arc (:ouro, :subject ⊕ arms) still on the
-local daemon if it survives — browsable, not precious.
+seams in the proposal); (b) extension-horizon-pilot (⚪ queue, NEW 2026-08-28
+— read [knowledge/extension-horizon-pilot](knowledge/extension-horizon-pilot.md)
+FIRST: extension ≡ event(evaluate), depth-cliff ≈ within-pass budget,
+fork-differencing pilot buildable here; handoff → verbum; prefer after (a)
+for durable arm-diff). Compaction arc ✅ →
+[knowledge/compaction](knowledge/compaction.md) (over-compaction
+CONFABULATES silently → validation ≡ arm-diff, :original ≡ ground truth).
+
+**Session 2026-08-28 (later) arc, for the stranger:** louisabraham.github.io/
+load-bearing ≡ Claude's dialect cluster at ~37% of human-attributed GitHub
+PRs (memories/dialect-detection-is-the-null-trace — stylometry ≡ the
+null-trace audit; provenance evidence in the proposal § Why). Lineage
+ruled: the design ≡ compressed measurement from ~350 verbum + 60+ anima
+sessions (memories/design-is-compressed-measurement — "ratified" ≡
+measurement-backed; recall across the seam before re-deriving). Cross-repo:
+anima memory dialect-cluster-is-the-calculus-trace committed (guest,
+walled); verbum read conservatively (state.md + INDEX only), NOT written.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
