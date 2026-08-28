@@ -65,9 +65,16 @@ determinism), and the file it names is `cat`-able host-side. Consequence:
 `:seq` continues across incarnations — the same guarantee the local daemon
 has, because it is the same code reading the same CWD.
 
-⚠️ An image built before trace-durability landed has no `trace` ns. Rebuild
-after upgrading, or the recorder silently isn't there (the image is the
-staleness surface — `podman images` timestamps are the tell).
+⚠️ **The image is the staleness surface** — a container outlives the source
+it was built from, by design. `podman images` timestamps are the tell.
+Two known bites, one silent and one loud:
+
+- an image predating trace-durability has no `trace` ns — the recorder
+  silently isn't there. SILENT: rebuild after upgrading.
+- an image predating the wire projection has no `registry/view` — a current
+  TUI REFUSES it at attach and names the fix (knowledge/wire-protocol.md
+  § A stale core says so). LOUD, by construction, because the second bite
+  taught us the first one's lesson.
 
 ## Network contract (docker/config.edn ≡ the example)
 
@@ -102,3 +109,14 @@ gateway reaches llama.cpp :5100 ✓ · full completion through the wall ✓ ·
 TUI-over-container attach human-verified ✓ · trace tree + transcript land
 host-side, `:io/ref` resolves from macOS ✓ (2026-08-28, image `6f394fd`
 built from `d03c284` — the first image carrying the `trace` ns)
+
+**Rebuilt 2026-08-28** — image `f20193c0` from `e3b691e` (the first carrying
+the wire projection), same spec: `--name llm-repl -p 127.0.0.1:7899:7899
+-v ~/llm-repl-work:/work`, CMD `nrepl`, no `~/.config` mount (the work-dir
+config is self-sufficient). Verified after a `kill -9` of the previous
+incarnation: `registry/view` resolves ∧ a current client attaches ✓ ·
+`:scratch` **recovered @6** ✓ · `trace on → visit 3` ✓ · transcript `:seq`
+CONTINUOUS across the kill (84 → 85 → 86) ✓ · host gateway reachable ✓.
+That last one is the guarantee upgraded: recovery was previously verified
+across a graceful stop, now across SIGKILL — `podman kill` is not data loss
+either.

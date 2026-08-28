@@ -41,10 +41,10 @@ tui-design-rules ∧ wire-protocol ∧ compaction ∧ frames ∧ fan-out-lineage
 upstream/escapement. Traps ≡ `memories/` (23 pages, one insight each — grep
 before re-deriving; recall > re-derivation).
 
-**Human moves open:** v0.3.0 tag when ready · anima `:local/root` ∨
-`0.3.0-alpha` · **restart every core, container included — they predate
-`registry/view`; a new TUI refuses them at attach, with the reason** · the
+**Human moves open:** v0.3.0 tag · anima `:local/root` ∨ `0.3.0-alpha` · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
+Cores are CURRENT: container rebuilt (`f20193c0` ≡ `e3b691e`, `:scratch`
+recovered @6 across a kill -9, visit 3); no local daemon. Stale cores refuse.
 
 **Next pickup (agent):** clojure-eval-per-form-values, now nearly free —
 nREPL emits one `value` frame PER TOP-LEVEL FORM (measured,
