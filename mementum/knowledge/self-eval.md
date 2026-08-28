@@ -13,16 +13,24 @@ related: [design/architecture, design/library-contract, container]
 
 ## The executor (`tools` ns)
 
-`load-string` in the HOST process — full power, NO in-process sandbox (the
-container wall is the sandbox; see [container](/knowledge/container.md)).
-Contract, all error paths as data:
+Per-form `read` ⊕ `eval` in the HOST process — full power, NO in-process
+sandbox (the container wall is the sandbox; see
+[container](/knowledge/container.md)). Contract, all error paths as data:
 
+- EVERY top-level form echoes `=> v`, interleaved with captured `*out*` in
+  temporal order — nREPL's exact frame shape (one `value` frame per form;
+  memories/nrepl-streams-out-and-values-per-form is the measurement).
+  Copied, not invented: with last-value-only the model burned 4 of 6
+  rounds re-asking for values it had computed non-finally.
+- `(ns foo)` persists across forms WITHIN a call, never leaks out
+  (`binding [*ns* *ns*]` ≡ `load-string`'s discipline)
 - `*out*` captured per call (output travels IN the result — same rule as the
   TUI alt screen: raw stdout never reaches a surface)
 - future ⊕ timed deref ⊕ best-effort cancel — timeout as data (bounds the
-  model's wait, not the host's CPU; bb has no hard thread kill)
-- result pr-str'ed, truncated at a marked char budget (an unmarked clip
-  reads as a complete value and teaches wrong facts)
+  model's wait, not the host's CPU; bb has no hard thread kill); timeouts ∧
+  errors carry everything echoed so far, partial values included
+- each value pr-str'ed, the whole echo truncated at a marked char budget
+  (an unmarked clip reads as a complete value and teaches wrong facts)
 - errors `{:result … :is-error true}` — the model reads and corrects
 
 Tool description names WHERE the model is and the bootstrap move (require →

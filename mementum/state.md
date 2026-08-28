@@ -20,7 +20,7 @@ public; v0.3.0 complete, `0.3.0-alpha` in ~/.m2 — tag ∧ anima are the human'
 
 ## Frontier
 
-**Five arcs shipped 2026-08-28** (ledgers ≡ queue.md § complete); CI is real
+**Six arcs shipped 2026-08-28** (ledgers ≡ queue.md § complete); CI is real
 — twin suite ∧ kondo ∧ schema validation, green on ubuntu.
 
 - **v030-refactor** — code ≡ the ratified design (@`4cce4be` ⊕ 🎯`30c6f78`).
@@ -34,6 +34,8 @@ public; v0.3.0 complete, `0.3.0-alpha` in ~/.m2 — tag ∧ anima are the human'
 - **registry-fetch-projection** — the wire carries `registry/view` (index ⊕
   the FOCUSED tape, ONE deref), never every tape: 623.8KB → 36.0KB at n=300.
   Payload ∧ sockets ∧ the DECLINED push protocol ≡ knowledge/wire-protocol.md.
+- **clojure-eval-per-form-values** — `clojure_eval` echoes `=> v` PER form,
+  stdout interleaved (nREPL shape, copied); ✗ carries partial echo. 186/591.
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
@@ -43,13 +45,11 @@ before re-deriving; recall > re-derivation).
 
 **Human moves open:** v0.3.0 tag · anima `:local/root` ∨ `0.3.0-alpha` · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
-Cores are CURRENT: container rebuilt (`f20193c0` ≡ `e3b691e`, `:scratch`
-recovered @6 across a kill -9, visit 3); no local daemon. Stale cores refuse.
+Container core ≡ `e3b691e` — ONE arc behind (per-form echo needs a REBUILD
+to reach the in-container model); no local daemon. Stale cores refuse.
 
-**Next pickup (agent):** clojure-eval-per-form-values, now nearly free —
-nREPL emits one `value` frame PER TOP-LEVEL FORM (measured,
-`memories/nrepl-streams-out-and-values-per-form`): copy that shape, don't
-invent one. tapeless-success-capture still wants its human D-decision.
+**Next pickup:** tapeless-success-capture wants its human D-decision
+(record-always ring: accept no-crash-safety?) — then agent-recipe-page.
 Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 `/work` — **NOT this repo**. Probing a model through it? Read
 `memories/probe-hygiene-tools-armed` FIRST.
@@ -77,4 +77,4 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front:
-clojure-eval-per-form-values → tapeless-success-capture (human D) → recipe.
+tapeless-success-capture (human D) → agent-recipe-page → manual-malli.

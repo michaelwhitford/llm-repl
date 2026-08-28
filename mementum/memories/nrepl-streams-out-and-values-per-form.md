@@ -25,7 +25,8 @@ Two facts, both useful:
 2. **One `value` frame PER TOP-LEVEL FORM**, in order — `nil` for the
    `dotimes`, then `:done`. Our `net/value` keeps only the LAST
    (`(last (:value result))`), which is correct for a client that wants one
-   answer, and is exactly the shape `clojure_eval` should echo instead
-   (⚪ clojure-eval-per-form-values: the model burned 4 of 6 rounds because
-   only the final value came back). nREPL already models what that ticket
-   wants to build — copy the `=> v` per form, don't invent it.
+   answer, and is exactly the shape `clojure_eval` now echoes
+   (✅ clojure-eval-per-form-values, shipped 2026-08-28: the model had
+   burned 4 of 6 rounds because only the final value came back). nREPL
+   already modeled what that ticket built — the `=> v` per form was
+   copied, not invented.
