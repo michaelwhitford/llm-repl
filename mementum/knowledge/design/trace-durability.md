@@ -268,6 +268,44 @@ Decisions layered on the ratification:
    not break the event/mutation path; trace's own fns are loud via receipts
    — the guard is the belt for the injected-fn seam itself).
 
+7. **The send-ring — tapeless ✓ capture, memory-only (RATIFIED 2026-08-28,
+   human: memory-only).** The last known hole: `bounce!`/`trampoline!`
+   captured NOTHING on the ✓ path (receipt-only, decision 1 — no tape index
+   ⇒ colliding turns), and `failures/` covered only ✗. Upstream was checked
+   and has no help: escapement's N-physical-sends are retries of ONE intent
+   (noise, first-write-wins is correct there); ours are N deliberately-
+   different inputs (the signal). MEASURED before deciding: 300 bounces ≡
+   2.9MB worst case (8KB replies; dedup only compresses the shared prefix)
+   — the cost objection is dead, so RECORD ALWAYS and let only persistence
+   be the decision.
+
+   Mechanism: a byte-capped in-memory ring in `trace`, fed at
+   `completion/send-traced!` — the ONE seam every physical send already
+   passes through. EVERY send records (✓ ∧ ✗, tapeless or not, `*capture?*`
+   irrelevant — the ring is not persistence, so the colliding-turns rationale
+   does not apply; entries are coordinate-free, addressed by time not turn,
+   the `:author` precedent). ✗ entries carry the `failures/` blob's
+   `:io/ref` — a ref points at ITS OWN payload or is absent (the upstream
+   trap NOT copied: their skipped-write returns a ref to a DIFFERENT send's
+   blob). Cap ≡ high-water mark, oldest evicted first, the NEWEST send
+   always survives even oversized (record-always beats the bound by one
+   entry). Config `:trace {:ring-bytes N}` (default 8MiB, `0`/`false` ≡
+   off); `eval` is the query surface (`trace/sends`, `trace/ring-stats` —
+   datalog is dead under bb: datascript ∧ asami ∧ doxa all fail on SCI
+   deftype). Never throws into the completion path (ring failure → receipt,
+   the standing posture).
+
+   **Crash-safety DECLINED deliberately** (the ratified D): a daemon death
+   loses the ring — and loses nothing that matters. The ✗ path is already
+   durable (`failures/`), receipts are already durable (`transcript.jsonl` —
+   THAT the probes ran survives), tapes are already durable (`tape.edn` —
+   the prefix a bounce ran against is recoverable), and a bounce is
+   trivially re-runnable, which is why receipt-only was ratified in the
+   first place. The hardest consumer is AUDIT (not replay), and the audit
+   window is the living daemon. Persistence, if demand ever materializes,
+   is a spill behind the SAME config key — un-skip on a real need, not
+   intuition.
+
 ## Estimate
 
 1–2 sessions (unchanged from the queue): trace ns ⊕ seam wiring ⊕ recovery
