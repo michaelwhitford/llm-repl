@@ -120,3 +120,13 @@ CONTINUOUS across the kill (84 → 85 → 86) ✓ · host gateway reachable ✓.
 That last one is the guarantee upgraded: recovery was previously verified
 across a graceful stop, now across SIGKILL — `podman kill` is not data loss
 either.
+
+**Rebuilt again 2026-08-28** — image `13d56e68` from `57d5eed` (the first
+carrying the per-form `=> v` echo), same pinned spec. Verified over the
+wire after the kill: `registry/view` resolves (`:scratch` recovered @4,
+focused tape rides the view) ✓ · `trace on → visit 4`, transcript `:seq`
+continuous (93 → 94) ✓ · per-form echo LIVE in-container:
+`(tools/eval-code "(+ 1 2) (println \"tick\") :done")` →
+`"=> 3\ntick\n=> nil\n=> :done"` ✓. Probe trap for the next reader:
+`:index` is a MAP keyed by slug — `(mapv :slug index)` maps over MapEntries
+and answers `[nil]`, which looks like a broken core and is a broken probe.

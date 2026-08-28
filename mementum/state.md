@@ -45,8 +45,8 @@ before re-deriving; recall > re-derivation).
 
 **Human moves open:** v0.3.0 tag · anima `:local/root` ∨ `0.3.0-alpha` · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
-Container core ≡ `e3b691e` — ONE arc behind (per-form echo needs a REBUILD
-to reach the in-container model); no local daemon. Stale cores refuse.
+Container core CURRENT: image `13d56e68` ≡ `57d5eed` (per-form echo in);
+`:scratch` recovered @4, visit 4; no local daemon. Stale cores refuse.
 
 **Next pickup:** tapeless-success-capture wants its human D-decision
 (record-always ring: accept no-crash-safety?) — then agent-recipe-page.
