@@ -68,5 +68,6 @@ surface for silent confabulation.
 ## Queue
 
 → `mementum/queue.md` (prospective memory — glyphed intentions, verdicts).
-Nothing in progress — v030-refactor ✅ complete (verdict in queue.md).
-Front of queue: compact-live-trial (READY) → compact-validation.
+Nothing in progress — v030-refactor ✅ ∧ compaction arc ✅ (trial ⊕
+validation, verdicts in queue.md). Front of queue: tape-persistence ∨
+trace-durability ∨ agent-recipe-page.
