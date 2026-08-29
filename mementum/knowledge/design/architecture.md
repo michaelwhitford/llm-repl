@@ -362,6 +362,48 @@ Runtime facts pinned: `malli.core` ∧ `malli.error` ∧ `malli.util` ∧
 (alter-var-root + `:catn` + humanize, bb) worked — rejected on design
 grounds, not mechanism failure.
 
+### D9 — seam strictness: the boundary-idiom rule (ratified 2026-08-29)
+
+From the state audit (knowledge/state-audit.md). The rule that decides
+throw vs errors-as-data at any seam:
+
+> **Error-as-data works only where the caller reads the return. For
+> discarded-return side effects, throw is the only loud option.**
+
+Rationale: error-as-data on a discarded return ≡ silent fallback — the
+worst failure mode. `(register-manual-ns! 'typo.ns)` in a host's init has
+its return read by NOBODY; a polite `{:repl/error …}` there rebuilds
+today's bug (registration "succeeds" quietly, `(help)` breaks later, far
+from the cause) with extra steps. Commands (`eval!` ∧ family) keep D8's
+errors-as-data because calling them IS reading the return.
+
+**The throw-can't-hurt-the-model premise is FALSE — verified:** every
+consumer sits behind an eval boundary that converts throws to its idiom.
+The model: `tools.clj:89-90` catches Throwable → `:is-error true` tool
+result (test-locked; escapement dispatch docstring says it verbatim —
+"a corrective tool_result rather than a thrown exception"). Humans ∧
+editors: nREPL prints the error, the session continues — that's what a
+repl IS. So "the model can't recover from a throw" never holds; throws at
+registration are safe for a model self-registering tools at runtime.
+
+**Requirement on every registration throw:** the ex-MESSAGE is the
+humanized teaching text (`me/humanize` output, config-loader precedent),
+ex-data carries the structured `{:errors …}`. Each audience's existing
+boundary then renders it: host boot STOPS loudly · model reads the message
+as its tool result, corrects, retries · editor sees the same text. One
+mechanism, no new machinery.
+
+**Ratified applications (build tickets ≡ queue):**
+- *tap-failure-receipts*: tap throws → DISARM (reset! the tap slot nil) ⊕
+  ONE loud receipt naming what stopped. Recursion-safe by construction
+  (tap gone before the receipt fires); honest (a throw reaching the tap
+  boundary means the tap FN is broken — trace catches its own disk errors
+  internally, so flickering half-durability with receipt spam is the
+  alternative, and it's worse).
+- *registration-guards*: `register-tool!` chokepoint (satisfies Tool ∧
+  m/schema-valid input-schema ∧ collision check) ∧ `register-manual-ns!`
+  validates find-ns — both THROW per this rule, humanized message.
+
 ## Build ∧ release ∧ CI (modeled on fulcro-rad-datalevin — copy, then adapt)
 
 - `build.clj` — tools.build; `lib 'us.whitford/llm-repl`; `VERSION` env from

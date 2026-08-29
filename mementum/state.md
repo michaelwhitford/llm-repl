@@ -51,10 +51,12 @@ Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh
 **Next pickup:** the STRICTNESS ARC — full state audit 2026-08-29
 (`knowledge/state-audit.md`: ~34 STRICT · ~13 MIXED · ~5 LOOSE; looseness
 clusters at S2 SEAMS, worst ≡ the tap swallow — the audit channel itself
-fails silently). **The v0.3.0 tag WAITS on this arc** (human): tap-failure-
-receipts → daemon-state-hygiene → term-state-chokepoint → registration-guards
-→ config-unset-semantics (RATIFIED: explicit `unset!`, nil not overloaded)
-⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
+fails silently). **The v0.3.0 tag WAITS on this arc** (human) — ALL DESIGN
+RATIFIED (D7-amend `unset!` · D8 `defcommand` · D9 boundary-idiom rule:
+data only where the return is READ, discarded-return side effects THROW,
+throws are model-safe via tools.clj:89), all six now BUILD tickets:
+tap-failure-receipts → daemon-state-hygiene → term-state-chokepoint →
+registration-guards → config-unset-semantics ⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
 attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
 rejected → memories/guardrails-is-not-a-boundary-guard).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
