@@ -52,11 +52,10 @@ source; entrypoints read the chain explicitly; `init!`/`reload-config!`/
 Remaining: open-defaults-create-only · trace-capture-hook. Trap ≡
 memories/ambient-config-leaks-into-embedding-hosts.
 
-**Human moves open:** v0.3.0 tag (gate CLEAR) · anima re-migration (D11
-keys ⊕ D10 ⊕ D8 — queue front) · the projection's TUI pass (Tab: right
-tape, no stale pane — agents have no TTY). Container core STALE (predates
-D10/D11); rebuild ≡ `./docker/container.sh` (build→replace→eval-gate); no
-daemon. Stale cores refuse.
+**Human moves open:** v0.3.0 tag (gate CLEAR, CI green on main) · anima
+re-migration (D11 keys ⊕ D10 ⊕ D8 — queue front) · the projection's TUI
+pass (Tab: right tape, no stale pane — agents have no TTY). Container
+REBUILT on the D8/D10/D11 core (human, 2026-08-29); no daemon.
 
 **STRICTNESS ARC COMPLETE 6/6 (2026-08-29) — THE v0.3.0 TAG GATE IS
 CLEAR** (tag ≡ human move). Final tranche, one session:
@@ -74,11 +73,12 @@ ratified step-function). Earlier tranche: ✅ tap-failure-receipts ·
 · ✅ config-unset-semantics — full ledgers ≡ queue.md § complete. Suite
 **227/780** bb ∧ JVM twins. New traps: memories/
 jvm-macroexpand-wraps-macro-throws (CompilerException wrap, JVM-only).
+Pushed 2026-08-29: CI GREEN (twin suite ∧ kondo WITH the hook — the
+gitignore near-miss verified dead in the pipeline that would have hit it).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
-Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
-`/work` — **NOT this repo**; core PREDATES D11/D10 (rebuild ≡
-`./docker/container.sh` before probing). Read
-`memories/probe-hygiene-tools-armed` FIRST.
+Instrument LIVE ∧ CURRENT: container rebuilt on D8/D10/D11 core @
+127.0.0.1:7899, mount `~/llm-repl-work` → `/work` — **NOT this repo**.
+Read `memories/probe-hygiene-tools-armed` FIRST.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
