@@ -49,6 +49,37 @@
      (and (tty? :stdin) (tty? :stdout))
      (some? (System/console)))))
 
+;; ── the state chokepoint ──────────────────────────────────────────────────────
+
+(def state-keys
+  "The CLOSED key set of the TUI state map — `registry/mutate!`'s pattern at
+   TUI scale (audit §2): every mutation goes through `update-state!`, which
+   validates the result against THIS set. Grow the schema by growing this
+   set, deliberately — an undeclared key is a typo until proven otherwise."
+  #{:view :events-ref :slug :nrepl-port :scroll :events :pending :input
+    :term-w :term-h :render-dirty :overlay})
+
+(defn update-state!
+  "THE TUI-state mutation chokepoint — every write to the state atom in this
+   ns AND main.clj routes through here (the ~11 scattered `swap!` sites are
+   dead; audit §2). `f` ≡ a pure fn of the current state map. The RESULT is
+   validated against `state-keys`: an unknown key throws loud, naming it —
+   the silent version was a typo'd key ⇒ a flag nobody reads ⇒ no repaint,
+   ever, with nothing to debug. Same pinned choice as `registry/mutate!`:
+   the swap has already landed when the assert fires and is NOT rolled back
+   (the atom shows the offending shape, not a politely-reverted lie).
+   Returns the new state."
+  [state f]
+  (let [s' (swap! state f)]
+    (when-let [unknown (seq (remove state-keys (keys s')))]
+      (throw (ex-info (str "llm-repl tui: unknown state key(s) "
+                           (pr-str (vec unknown))
+                           " — the TUI state schema is CLOSED; add to "
+                           "term/state-keys deliberately or fix the typo "
+                           "(silent alternative ≡ a no-repaint nobody can debug)")
+                      {:unknown (vec unknown) :allowed state-keys})))
+    s'))
+
 ;; ── render loop ───────────────────────────────────────────────────────────────
 
 (defn request-render!
@@ -56,7 +87,7 @@
    client's notify callback, eval workers, the input thread). The ticker
    repaints."
   [state]
-  (swap! state assoc :render-dirty true))
+  (update-state! state #(assoc % :render-dirty true)))
 
 (defn render-frame!
   "Repaint NOW (ticker-called; serialized by `lock`). Reads terminal size each
@@ -65,7 +96,7 @@
   (locking lock
     (let [w (max 40 (.getWidth terminal))
           h (max 8 (.getHeight terminal))
-          s (swap! state assoc :term-w w :term-h h :render-dirty false)
+          s (update-state! state #(assoc % :term-w w :term-h h :render-dirty false))
           ;; the events STREAM is referenced (like :view), deref'd per
           ;; frame — `frame/frame` stays pure, headless tests pass :events
           ;; directly
@@ -82,9 +113,9 @@
       ;; phantom distance before the view moves (human-found: arrow-up after
       ;; bottoming out the help overlay)
       (when scroll-used
-        (swap! state (fn [st] (if (= (:scroll st) scroll-used)
-                                st
-                                (assoc st :scroll scroll-used)))))
+        (update-state! state (fn [st] (if (= (:scroll st) scroll-used)
+                                        st
+                                        (assoc st :scroll scroll-used)))))
       (emit! (str hide-cursor-s s
                   (cmp/move-to-s cursor-row cursor-col)
                   show-cursor-s)))))
@@ -120,18 +151,34 @@
 
 ;; ── view state mutators (wire layer ∧ input loop drive these) ─────────────────
 
+(defn focus-slug!
+  "Point the TUI at `slug` directly (a `use!` typed at any surface, or the
+   TUI's own use! form) — same state shape as `cycle-slug!` without the DFS
+   walk: focus moves, scroll resets, repaint requested. The wire layer
+   fetches the tape separately (`client/focus!`); until it lands the pane
+   renders the loading placeholder."
+  [state slug]
+  (update-state! state #(assoc % :slug slug :scroll 0 :render-dirty true)))
+
+(defn set-pending!
+  "Mark/clear the pending-completion indicator: `slug` while a prose turn is
+   in flight, nil when it lands (main's submit worker brackets its future
+   with these)."
+  [state slug]
+  (update-state! state #(assoc % :pending slug :render-dirty true)))
+
 (defn show-overlay!
   "Pop a document {:title s :lines [s]} OVER the right pane. Content is
    INJECTED (the wire layer renders it — this ns stays core-free, and any
    future overlay — compare pane, manual pages — rides the same slot).
    Esc dismisses; PgUp/PgDn scroll (head-anchored)."
   [state overlay]
-  (swap! state assoc :overlay overlay :scroll 0 :render-dirty true))
+  (update-state! state #(assoc % :overlay overlay :scroll 0 :render-dirty true)))
 
 (defn dismiss-overlay!
   "Drop the overlay; the right pane returns to the tape (scroll reset)."
   [state]
-  (swap! state #(-> % (dissoc :overlay) (assoc :scroll 0 :render-dirty true))))
+  (update-state! state #(-> % (dissoc :overlay) (assoc :scroll 0 :render-dirty true))))
 
 (defn scroll-view!
   "Move the right-pane view `n` lines, dir ∈ {:up :down} — SCREEN semantics,
@@ -140,7 +187,7 @@
    down the document), so the sign flips per kind here, in ONE place —
    key handlers stay direction-literal."
   [state dir n]
-  (swap! state (fn [s]
+  (update-state! state (fn [s]
                  (let [sign (if (:overlay s)
                               (if (= dir :up) - +)
                               (if (= dir :up) + -))]
@@ -158,7 +205,7 @@
    the loading placeholder — never the session we just left."
   [state on-focus]
   (let [moved (volatile! nil)]
-    (swap! state (fn [{:keys [view slug] :as s}]
+    (update-state! state (fn [{:keys [view slug] :as s}]
                    (let [slugs (frame/dfs-order (:index @view))
                          i     (.indexOf ^clojure.lang.PersistentVector slugs slug)
                          slug' (if (seq slugs)
@@ -190,8 +237,8 @@
           (= k :esc)
           (if (:overlay @state)
             (dismiss-overlay! state)
-            (swap! state (fn [s] (-> s (assoc :input (:input (frame/edit-step (:input s) k)))
-                                     (assoc :render-dirty true)))))
+            (update-state! state (fn [s] (-> s (assoc :input (:input (frame/edit-step (:input s) k)))
+                                             (assoc :render-dirty true)))))
 
           ;; ? on an EMPTY buffer (and not mid-paste) → help overlay
           (and (= k [:char \?])
@@ -211,10 +258,10 @@
 
           :else
           (let [submitted (volatile! nil)]
-            (swap! state (fn [s]
-                           (let [{:keys [input submit]} (frame/edit-step (:input s) k)]
-                             (vreset! submitted submit)
-                             (assoc s :input input :render-dirty true))))
+            (update-state! state (fn [s]
+                                   (let [{:keys [input submit]} (frame/edit-step (:input s) k)]
+                                     (vreset! submitted submit)
+                                     (assoc s :input input :render-dirty true))))
             (when-let [text @submitted]
               (on-submit text)))))
       (when-not @(:stopped? h)

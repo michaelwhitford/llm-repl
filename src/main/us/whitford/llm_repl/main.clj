@@ -48,7 +48,7 @@
    (core/open! slug opts)
    (reset! current* slug)
    (when-let [h @tui*]
-     (swap! (:state h) assoc :slug slug :scroll 0 :render-dirty true))
+     (tui/focus-slug! (:state h) slug))
    {:repl/id slug :repl/depth (count (:tape (core/snapshot slug)))}))
 
 ;; ── nREPL (the attach surface) ────────────────────────────────────────────────
@@ -168,7 +168,7 @@
         (client/ensure! client slug (or opts {}))
         (reset! current* slug)
         (client/focus! client slug)
-        (swap! state assoc :slug slug :scroll 0 :render-dirty true)
+        (tui/focus-slug! state slug)
         (core/event! (str "use! " slug)))
       (catch Throwable t (core/event! (str "error: " (ex-message t)))))))
 
@@ -221,11 +221,11 @@
 
       :else
       (let [slug (:slug @state)]
-        (swap! state assoc :pending slug :render-dirty true)
+        (tui/set-pending! state slug)
         (future
           ;; prose! emits its own …/✓/✗ receipts at the core seam
           (client/prose! client slug text)
-          (swap! state assoc :pending nil :render-dirty true))))))
+          (tui/set-pending! state nil))))))
 
 (defn run-tui
   "Boot the TUI over the CLIENT's view/events deref-ables and BLOCK until it
