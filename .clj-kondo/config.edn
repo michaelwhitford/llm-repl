@@ -7,6 +7,12 @@
  ;; repo). So this project PINS the levels it depends on: the repo is
  ;; authoritative, no home config can weaken it, and `clj-kondo --lint
  ;; src/main src/test` means the same thing on every machine and in CI.
+ ;; defcommand ≡ defn's exact grammar (D8) — but :lint-as defn is NOT enough
+ ;; (it shows kondo one arity; every generated defaulting-arity call site
+ ;; would flag :invalid-arity), so a macroexpand hook mirrors the real
+ ;; expansion. D8 amended in-build; hooks/defcommand.clj documents it.
+ :hooks {:macroexpand {us.whitford.llm-repl.guard/defcommand hooks.defcommand/defcommand}}
+
  :linters
  {:unused-binding      {:level :warning}
   :unused-namespace    {:level :warning}

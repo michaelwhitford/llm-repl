@@ -22,6 +22,7 @@
    [escapement.llm.providers :as providers]
    [malli.core :as m]
    [malli.error :as me]
+   [malli.util :as mu]
    [us.whitford.llm-repl.llm.llamacpp :as llamacpp]))
 
 ;; ── config ────────────────────────────────────────────────────────────────────
@@ -66,9 +67,10 @@
 
 ;; ── config schema (D7: formal, closed ⊕ :ext) ─────────────────────────────────
 
-(def ^:private prompt-value-schema
+(def prompt-value-schema
   "A prompt-stack layer value: literal string | {:file path} | false
-   (explicitly none — stops the chain)."
+   (explicitly none — stops the chain). Public: session-opts-schema and
+   the D8 command schemas reuse it — one definition of the shape."
   [:or :string [:map [:file :string]] [:= false]])
 
 (def config-schema
@@ -96,6 +98,29 @@
                                       [:host {:optional true} :string]
                                       [:port :int]]]]
    [:ext           {:optional true} [:map-of :keyword :any]]])
+
+(def session-opts-schema
+  "The session-knob contract (D8 amendment 2 ⊕ D11): the config overrides a
+   caller may pass at open!/eval!/fork! and the shape a session's :config
+   persists — FULLY QUALIFIED keys (D11: this map escapes into host space
+   via snapshot). CLOSED: a typo'd knob TEACHES (humanized error naming the
+   valid set) instead of being silently dropped (the old select-keys
+   behavior). Shared value-shapes stay ONE source: the prompt layers ∧
+   ::tools are pulled from config-schema's own entries via malli.util —
+   a new shared shape propagates automatically. Commands extend per-command
+   (:complete-fn :xform :at — ephemeral, bare by D11 scope) via mu/merge
+   in their own :args."
+  (let [prompt-layer (mu/get config-schema :preamble)   ; [:maybe prompt-value-schema]
+        tools-shape  (mu/get config-schema :tools)]     ; [:maybe [:or :boolean [:vector :keyword]]]
+    [:map {:closed true}
+     [:us.whitford.llm-repl/model       {:optional true} [:maybe [:or :keyword :string]]]
+     [:us.whitford.llm-repl/system      {:optional true} prompt-layer]
+     [:us.whitford.llm-repl/preamble    {:optional true} prompt-layer]
+     [:us.whitford.llm-repl/orientation {:optional true} prompt-layer]
+     [:us.whitford.llm-repl/preamble?   {:optional true} [:maybe :boolean]]
+     [:us.whitford.llm-repl/thinking    {:optional true} [:maybe [:or :boolean :map]]]
+     [:us.whitford.llm-repl/temperature {:optional true} [:maybe number?]]
+     [:us.whitford.llm-repl/tools       {:optional true} tools-shape]]))
 
 (defn validate-config
   "Assert `cfg` against `config-schema`; returns `cfg` unchanged, or throws

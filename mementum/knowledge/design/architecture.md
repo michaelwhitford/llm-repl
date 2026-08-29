@@ -298,7 +298,8 @@ Completes D4's "manual commands carry malli input schemas" bullet with a
 mechanism. Every `^:manual` command is written with a **`defcommand` macro**
 in `defn`'s EXACT grammar — name, docstring, attr-map, argv, body — so
 readers already know the shape and kondo needs one line
-(`:lint-as clojure.core/defn`):
+(`:lint-as clojure.core/defn`) — *amended in-build: the one line is NOT
+enough; see the kondo note in the amendments below*:
 
 ```clojure
 (defcommand eval!
@@ -382,6 +383,16 @@ left open, found by assessing against the real command surface):**
    as `:args` itself). Variadic commands (`unset!` `[slug & ks]`) have no
    optional tail — no generated arity; the guard validates the flat arg
    list against a `[:* …]`/`[:+ …]` schema.
+1b. **kondo needs a macroexpand HOOK, not `:lint-as`** (found at first
+   lint): `:lint-as clojure.core/defn` shows kondo ONE arity — every
+   defaulting-arity call site (`(eval! :s "hi")`) flags `:invalid-arity`
+   (26 errors on first run). `.clj-kondo/hooks/defcommand.clj` mirrors the
+   real expansion (arity generation ⊕ the `(or (errors …) …)` wrap, no
+   malli — sci can't load it); it also emits the `:args` form as an
+   expression (else schema vars lint unused) and the guard wrap (else
+   `(:repl/error (cmd …))` lints "condition always false"). Keep the
+   hook's arity logic in sync with the macro.
+
 2. **`roster/session-opts-schema` is the ONE session-knob source.** The
    ratified "opts derived from `roster/config-schema` via select-keys"
    cannot be literal — the session keys (`:model :system :preamble?

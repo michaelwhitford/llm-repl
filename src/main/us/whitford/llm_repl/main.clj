@@ -24,6 +24,7 @@
    ;; command must resolve bare in a typed (form). The `core` alias stays for
    ;; main's own code (reads qualified) — full short-name rewire is step 6.
    [us.whitford.llm-repl :as core :refer :all]
+   [us.whitford.llm-repl.guard :as guard]
    [us.whitford.llm-repl.roster :as roster]
    [us.whitford.llm-repl.trace :as trace]
    [us.whitford.llm-repl.tui.term :as tui]))
@@ -39,17 +40,19 @@
   tui*
   (atom nil))
 
-(defn ^{:manual "Point the prompt/TUI at a session, creating it if needed."} use!
+(guard/defcommand use!
   "Point the human surface at `slug` (opening it if needed, `opts` forwarded)
    — the plain loop's current session AND the TUI's focus when active.
    Returns the session's compact index entry."
-  ([slug] (use! slug {}))
-  ([slug opts]
-   (core/open! slug opts)
-   (reset! current* slug)
-   (when-let [h @tui*]
-     (tui/focus-slug! (:state h) slug))
-   {:repl/id slug :repl/depth (count (:tape (core/snapshot slug)))}))
+  {:manual   "Point the prompt/TUI at a session, creating it if needed."
+   :args     [:catn [:slug :keyword] [:opts [:? :map]]]
+   :defaults {opts {}}}
+  [slug opts]
+  (core/open! slug opts)
+  (reset! current* slug)
+  (when-let [h @tui*]
+    (tui/focus-slug! (:state h) slug))
+  {:repl/id slug :repl/depth (count (:tape (core/snapshot slug)))})
 
 ;; ── nREPL (the attach surface) ────────────────────────────────────────────────
 

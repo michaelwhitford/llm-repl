@@ -448,6 +448,30 @@
     (testing "drop! → tombstone (recovery must not resurrect it)"
       (is (:trace/dropped (read-blob store "nodes/s/1/tape.edn"))))))
 
+;; ── D8 coverage — belt-and-suspenders over the WHOLE manual ───────────────
+
+(deftest every-manual-command-is-guarded-test
+  (testing "behavioral, mechanism-agnostic (D8): every manual command with
+            params rejects garbage args as {:repl/error …} — enforced over
+            (manual) itself, so a future command can't ship unguarded"
+    (doseq [{:keys [name args]} (repl/manual)
+            ;; m/form canonicalizes a zero-param [:catn] to the bare :catn
+            ;; keyword — those commands have nothing to garbage
+            :let [n (if (vector? args) (count (rest args)) 0)]
+            :when (pos? n)]
+      (let [v       (ns-resolve 'us.whitford.llm-repl name)
+            garbage (repeat n (Object.))]
+        (is (:repl/error (apply v garbage))
+            (str name " must reject garbage args as data"))))))
+
+(deftest manual-exports-args-test
+  (testing "every manual entry carries its :args schema as PURE DATA (m/form)
+            — agents ∧ json-schema derivation read it (D8)"
+    (doseq [{:keys [name args]} (repl/manual)]
+      (is (or (= :catn args)                              ; zero-param canonical form
+              (and (vector? args) (= :catn (first args))))
+          (str name " exports a :catn form")))))
+
 ;; ── unset! — the sticky config's release valve (D7 amendment) ─────────────
 
 (deftest unset!-seeded-knobs-reseed-test
@@ -479,14 +503,22 @@
         "open! preserved the explicit none; only unset! removes it")))
 
 (deftest unset!-errors-as-data-test
-  (testing "commands return errors as DATA — the return is read (D9 idiom)"
+  (testing "commands return errors as DATA — the return is read (D9 idiom);
+            empty/unknown ks now hit the D8 guard, whose enum IS the teaching
+            (it lists the whole unsettable set, and :args rides along)"
     (repl/open! :u {})
-    (is (str/includes? (:repl/error (repl/unset! :u :bogus)) "unknown config key")
-        "unknown key names itself")
-    (is (str/includes? (:repl/error (repl/unset! :u :bogus)) "orientation")
-        "…and teaches the unsettable set")
-    (is (str/includes? (:repl/error (repl/unset! :u)) "at least one key"))
-    (is (= "no such repl session: :ghost" (:repl/error (repl/unset! :ghost ::repl/tools))))))
+    (let [e (:repl/error (repl/unset! :u :bogus))]
+      (is (= 'unset! (:command e)) "the guard names the command")
+      (is (str/includes? (pr-str (:errors e)) "should be either")
+          "unknown key rejected by the enum")
+      (is (str/includes? (pr-str (:errors e)) "orientation")
+          "…which lists the whole unsettable set")
+      (is (vector? (:args e)) "the full schema form rides the error"))
+    (is (str/includes? (pr-str (get-in (repl/unset! :u) [:repl/error :errors]))
+                       "end of input")
+        "empty ks caught by the [:+ …] regex")
+    (is (= "no such repl session: :ghost" (:repl/error (repl/unset! :ghost ::repl/tools)))
+        "missing session stays the body's own data error")))
 
 (deftest unset!-receipt-and-idempotence-test
   (testing "one loud receipt per unset!; unsetting an already-default key is

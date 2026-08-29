@@ -81,7 +81,10 @@
    `wrapped-backend`, `with-preamble`), never the ns path they live in."
   (:require
    [clojure.string :as str]
+   [malli.core :as m]
+   [malli.util :as mu]
    [us.whitford.llm-repl.completion :as completion]
+   [us.whitford.llm-repl.guard :as guard :refer [defcommand]]
    [us.whitford.llm-repl.registry :as registry]
    [us.whitford.llm-repl.roster :as llm]
    [us.whitford.llm-repl.tape :as tape]
@@ -150,6 +153,43 @@
    is the does-the-tool-help counterfactual."
   [::model ::system ::preamble ::preamble? ::thinking ::temperature ::tools])
 
+;; ── D8 command schemas — the :catn building blocks ──────────────────────────
+;; The session-knob shape is roster/session-opts-schema (ONE source, D8
+;; amendment 2); each opts family extends it with its EPHEMERAL keys
+;; (:complete-fn :xform :at — bare by D11 scope) via mu/merge. Closed maps
+;; throughout: a typo'd knob TEACHES, never silently drops.
+
+(def ^:private Slug :keyword)
+
+(def ^:private SessionOpts
+  "Config overrides ONLY — what ab! variants carry."
+  llm/session-opts-schema)
+
+(def ^:private EvalOpts
+  "Config overrides ⊕ the injected-IO seam (library-contract § 3)."
+  (mu/merge llm/session-opts-schema
+            [:map [:complete-fn {:optional true} ifn?]]))
+
+(def ^:private BatteryOpts
+  "EvalOpts ⊕ :xform (the rf→rf preprocessing slot)."
+  (mu/merge EvalOpts [:map [:xform {:optional true} ifn?]]))
+
+(def ^:private OpenOpts
+  "open! sits under EVERY driver (eval!/bounce!/trampoline!/run-battery!
+   delegate their whole opts map to it), so it accepts the union."
+  BatteryOpts)
+
+(def ^:private ForkOpts
+  "Config overrides ⊕ :at (branch an older turn)."
+  (mu/merge llm/session-opts-schema [:map [:at {:optional true} :int]]))
+
+(def ^:private AbOpts
+  "ab!'s own knobs — :at forwarded to each fork!, :complete-fn to each
+   eval!. Variant CONFIG rides the variants map, not here."
+  [:map {:closed true}
+   [:at          {:optional true} :int]
+   [:complete-fn {:optional true} ifn?]])
+
 ;; ── THE rf-factory (transducer-compatible; the transducer IS the mechanism) ───
 
 (defn eval-rf
@@ -169,7 +209,7 @@
 
 ;; ── lifecycle + observability ─────────────────────────────────────────────────
 
-(defn ^{:manual "Get or create a session. Options set its model, system, temperature."} open!
+(defcommand open!
   "Get-or-create the session at `slug`, merging any config overrides from
    `opts` (config-keys) into its :config. Returns the session map.
 
@@ -178,9 +218,11 @@
    same slug to land in unnoticed. Creation is detected from the [old new]
    pair (`old` lacked the slug ⟺ this call created it), never from a stale
    local `existing` check."
-  ([slug] (open! slug {}))
-  ([slug opts]
-   (let [overrides (select-keys opts config-keys)
+  {:manual   "Get or create a session. Options set its model, system, temperature."
+   :args     [:catn [:slug Slug] [:opts [:? OpenOpts]]]
+   :defaults {opts {}}}
+  [slug opts]
+  (let [overrides (select-keys opts config-keys)
          f         (fn [reg]
                      (if (contains? reg slug)
                        (update-in reg [slug :config] merge overrides)
@@ -196,18 +238,22 @@
        ;; nodes/<slug>/<visit>/seed.edn (creation only; a config-merge
        ;; re-open! shows up in the tape.edn snapshot instead)
        (trace/seed! slug (select-keys (get new slug) [:slug :config :created-at])))
-     (get new slug))))
+     (get new slug)))
 
-(defn ^{:manual "The full session map — tape included."} snapshot
+(defcommand snapshot
   "The session map at `slug`, or nil (λ observe). `:tape` is the canonical tape."
+  {:manual "The full session map — tape included."
+   :args   [:catn [:slug Slug]]}
   [slug]
   (get @registry/sessions* slug))
 
-(defn ^{:manual "List all sessions: model, depth, turns, fork parent."} sessions-list
+(defcommand sessions-list
   "A compact index of live sessions (λ glass) — no message bodies. The SHAPE
    is `registry/index`'s (ONE definition of the projection, shared with the
    TUI's wire payload — λ dep: extract, never duplicate); this surface only
    flattens the slug-keyed map to the vector humans and models read."
+  {:manual "List all sessions: model, depth, turns, fork parent."
+   :args   [:catn]}
   []
   (vec (vals (registry/index @registry/sessions*))))
 
@@ -238,13 +284,16 @@
                     {:errors {:ns ns-sym :loaded? false}})))
   (swap! manual-namespaces* #(vec (distinct (conj % ns-sym)))))
 
-(defn ^{:manual "The command manual as data — for agents and tools."} manual
+(defcommand manual
   "The operator manual AS DATA (λ glass): every `^:manual` command across the
-   registered namespaces as {:name :arglists :summary :doc} — COMPILED from
-   ns-publics, never hand-written (structure > instruction: the metadata is
-   the source of truth; tagging curates the operator surface out of the
-   plumbing). The ONE seam agent surfaces derive from — (help) renders it,
-   the MCP facade will compile its tool list from it."
+   registered namespaces as {:name :arglists :summary :doc :args} — COMPILED
+   from ns-publics, never hand-written (structure > instruction: the metadata
+   is the source of truth; tagging curates the operator surface out of the
+   plumbing). `:args` ≡ the D8 input schema as PURE DATA (`m/form` — agents
+   ∧ a future malli->json-schema read it). The ONE seam agent surfaces
+   derive from — (help) renders it, tool lists compile from it."
+  {:manual "The command manual as data — for agents and tools."
+   :args   [:catn]}
   []
   (->> @manual-namespaces*
        (mapcat (comp ns-publics find-ns))
@@ -259,16 +308,19 @@
                     :summary  (if (string? mn)
                                 mn
                                 (first (str/split-lines (or (:doc m) ""))))
-                    :doc      (:doc m)}))))
+                    :doc      (:doc m)
+                    :args     (some-> (:manual/args m) m/schema m/form)}))))
        (sort-by (comp str :name))
        vec))
 
-(defn ^{:manual "This help."} help
+(defcommand help
   "Human rendering of (manual): one entry per command — name, arglists, and
    the CURATED human summary (the ^:manual tag's string value; docstrings
    stay maintainer/agent-dense — two audiences, two texts, ONE seam).
    Returns a STRING (caller prints; a println here would corrupt the TUI's
    alt screen). Full docs: (manual), or (:doc (meta #'cmd))."
+  {:manual "This help."
+   :args   [:catn]}
   []
   (->> (manual)
        (map (fn [{:keys [name arglists summary]}]
@@ -288,7 +340,7 @@
    (model > provider > root) takes over — for these, unset ≡ plain dissoc."
   #{::system ::preamble ::orientation})
 
-(defn ^{:manual "Remove session config overrides so defaults/prompt chain resume."} unset!
+(defcommand unset!
   "Remove config override(s) `ks` from the session at `slug` — the STICKY
    config's explicit release valve (D7 amendment, 2026-08-29: `open!` merges
    and never removes, so a poison override used to outlive everything short
@@ -297,55 +349,52 @@
    semantics (ratified): prompt-stack keys (::system ::preamble ::orientation)
    are DISSOC'd — the request-time chain takes over; the default-seeded
    knobs (::model ::preamble? ::thinking ::temperature ::tools) RE-SEED from the
-   live `(default-config)` — bare dissoc would mint new poison (:model
-   absent ≡ a broken send; :tools absent ≡ none, not default). One mental
+   live `(default-config)` — bare dissoc would mint new poison (::model
+   absent ≡ a broken send; ::tools absent ≡ none, not default). One mental
    model: whatever would govern a FRESH session governs again.
 
    Returns data, never throws (λ api): {:repl/id :repl/unset :repl/config}
    — :repl/config shows what now governs the named keys (absent ≡ the chain
-   decides at request time). Unknown key ∨ missing session → {:repl/error}."
+   decides at request time). Empty/unknown `ks` → the D8 guard's enum error
+   (it lists the whole unsettable set — the schema IS the teaching); missing
+   session → {:repl/error}."
+  {:manual "Remove session config overrides so defaults/prompt chain resume."
+   :args   [:catn [:slug Slug] [:ks [:+ (into [:enum] unsettable-keys)]]]}
   [slug & ks]
-  (let [ks (vec ks)]
-    (cond
-      (empty? ks)
-      {:repl/id slug
-       :repl/error (str "unset! needs at least one key — unsettable: " (pr-str unsettable-keys))}
+  (let [ks        (vec ks)
+        defaults  (default-config) ; live read, OUTSIDE the swap fn (pure f)
+        release   (fn [config k]
+                    (if (chain-resumed-keys k)
+                      (dissoc config k)
+                      (assoc config k (get defaults k))))
+        [old new] (registry/mutate!
+                   (fn [reg]
+                     (if (contains? reg slug)
+                       (update-in reg [slug :config] #(reduce release % ks))
+                       reg)))]
+    (if-not (contains? old slug)
+      {:repl/id slug :repl/error (str "no such repl session: " slug)}
+      (do
+        (event! {:kind :unset! :slug slug :msg (str/join " " (map str ks))})
+        {:repl/id     slug
+         :repl/unset  ks
+         :repl/config (select-keys (get-in new [slug :config]) ks)}))))
 
-      (seq (remove (set unsettable-keys) ks))
-      {:repl/id slug
-       :repl/error (str "unknown config key(s) " (pr-str (vec (remove (set unsettable-keys) ks)))
-                        " — unsettable: " (pr-str unsettable-keys))}
-
-      :else
-      (let [defaults  (default-config) ; live read, OUTSIDE the swap fn (pure f)
-            release   (fn [config k]
-                        (if (chain-resumed-keys k)
-                          (dissoc config k)
-                          (assoc config k (get defaults k))))
-            [old new] (registry/mutate!
-                       (fn [reg]
-                         (if (contains? reg slug)
-                           (update-in reg [slug :config] #(reduce release % ks))
-                           reg)))]
-        (if-not (contains? old slug)
-          {:repl/id slug :repl/error (str "no such repl session: " slug)}
-          (do
-            (event! {:kind :unset! :slug slug :msg (str/join " " (map str ks))})
-            {:repl/id     slug
-             :repl/unset  ks
-             :repl/config (select-keys (get-in new [slug :config]) ks)}))))))
-
-(defn ^{:manual "Delete a session."} drop!
+(defcommand drop!
   "Discard the session at `slug` (mutate!-only, D2). Returns true when one
    existed (detected from `old`, the pre-mutation snapshot)."
+  {:manual "Delete a session."
+   :args   [:catn [:slug Slug]]}
   [slug]
   (let [[old _] (registry/mutate! #(dissoc % slug))
         existed? (contains? old slug)]
     (when existed? (event! {:kind :drop! :slug slug}))
     existed?))
 
-(defn ^{:manual "Delete ALL sessions."} reset-all!
+(defcommand reset-all!
   "Clear the whole registry (test seam / operator reset)."
+  {:manual "Delete ALL sessions."
+   :args   [:catn]}
   []
   (registry/mutate! (constantly {}))
   (event! {:kind :reset-all!})
@@ -353,7 +402,7 @@
 
 ;; ── compact! — D1: the ONE true write ───────────────────────────────────────
 
-(defn ^{:manual "Rewrite an aged assistant turn in place to its λ essence (the band guards it)."} compact!
+(defcommand compact!
   "Compact the assistant message at explicit tape index `i` on session `slug`
    to its λ essence (D1, architecture.md § formal shape: `compact!` is the
    ONE true write — everything else on the tape is append-only). Routes
@@ -387,9 +436,11 @@
    Returns {:repl/id :repl/index :repl/outcome :repl/saved? :repl/depth} or,
    on a missing session, {:repl/id :repl/error} — as data, never a throw
    (λ mirror)."
-  ([slug i lambda] (compact! slug i lambda tape/default-floor))
-  ([slug i lambda floor]
-   (let [[old new] (registry/mutate!
+  {:manual   "Rewrite an aged assistant turn in place to its λ essence (the band guards it)."
+   :args     [:catn [:slug Slug] [:i :int] [:lambda :string] [:floor [:? :int]]]
+   :defaults {floor tape/default-floor}}
+  [slug i lambda floor]
+  (let [[old new] (registry/mutate!
                     (fn [reg]
                       (if (contains? reg slug)
                         (update-in reg [slug :tape] tape/apply-compaction-at i lambda floor)
@@ -421,7 +472,7 @@
 
            :else
            (do (event! {:kind :compact! :slug slug :msg (str "@" i " declined (past ceiling)")})
-               {:repl/id slug :repl/index i :repl/outcome :declined :repl/depth depth})))))))
+               {:repl/id slug :repl/index i :repl/outcome :declined :repl/depth depth}))))))
 
 ;; ── drivers ────────────────────────────────────────────────────────────────────
 
@@ -436,7 +487,7 @@
      :repl/added   (count replies)
      :repl/replies replies}))
 
-(defn ^{:manual "Chat: send text to a session; the reply is appended to its tape."} eval!
+(defcommand eval!
   "Run ONE completion on the session's tape. Ensures the session (creating
    with `opts` overrides), then the D2 shape (architecture.md § D2):
 
@@ -466,9 +517,11 @@
 
    opts: config overrides (config-keys, persisted) ⊕ :complete-fn (injected IO;
    default `completion/default-complete`)."
-  ([slug text] (eval! slug text {}))
-  ([slug text opts]
-   (let [sess           (open! slug opts)
+  {:manual   "Chat: send text to a session; the reply is appended to its tape."
+   :args     [:catn [:slug Slug] [:text :string] [:opts [:? EvalOpts]]]
+   :defaults {opts {}}}
+  [slug text opts]
+  (let [sess           (open! slug opts)
          complete       ((get opts :complete-fn completion/default-complete) (:config sess) slug)
          [_ after-user] (registry/mutate!
                          (fn [reg]
@@ -514,9 +567,9 @@
            (catch Throwable t
              (event! (err-receipt :eval! slug t))
              {:repl/id    slug
-              :repl/error (str "send failed: " (ex-message t))})))))))
+              :repl/error (str "send failed: " (ex-message t))}))))))
 
-(defn ^{:manual "Run a fixed probe sequence, appending every turn to the tape."} run-battery!
+(defcommand run-battery!
   "Fold a FIXED probe sequence over the session's tape via `transduce` (the
    transducer driver — G2: eager, never lazy). `:xform` (default identity)
    preprocesses/instruments the probe stream (rf→rf prosthesis lands here in a
@@ -526,9 +579,11 @@
    a fault-tolerant variant is a later fork.
 
    opts: config overrides ⊕ :xform ⊕ :complete-fn."
-  ([slug probes] (run-battery! slug probes {}))
-  ([slug probes opts]
-   (let [sess      (open! slug opts)
+  {:manual   "Run a fixed probe sequence, appending every turn to the tape."
+   :args     [:catn [:slug Slug] [:probes [:sequential :string]] [:opts [:? BatteryOpts]]]
+   :defaults {opts {}}}
+  [slug probes opts]
+  (let [sess      (open! slug opts)
          before    (:tape sess)
          complete  ((get opts :complete-fn completion/default-complete) (:config sess) slug)
          rf        (eval-rf {:complete complete})
@@ -561,7 +616,7 @@
          ;; all-or-nothing: a mid-battery throw leaves the start receipt
          ;; dangling — the missing ✓ IS the signal (loud; λ antifragile)
          (event! {:kind :battery! :slug slug :msg (str (count (tape/assistant-indices added)) "✓")})
-         (assoc (reply-metadata slug before (:tape final)) :repl/turns (:turns final)))))))
+         (assoc (reply-metadata slug before (:tape final)) :repl/turns (:turns final))))))
 
 (defn- bounce-output
   "Apply the rf's step to a FIXED prefix and read the assistant text — the
@@ -570,16 +625,18 @@
   [step prefix input]
   (:text (last (step prefix input))))
 
-(defn ^{:manual "Try ONE input against a session without changing its tape."} bounce!
+(defcommand bounce!
   "Bounce ONE input off the session's FIXED tape (the fixed point): complete once
    from the prefix, return the output, leave the tape UNCHANGED. Non-committing —
    unlike eval!, the fixed point does not move, so you can keep bouncing varied
    inputs (interactive prompt iteration; the KV prefix is reused). Returns
    {:repl/id :repl/input :repl/output :repl/depth} or {:repl/id :repl/error}.
    opts: config overrides ⊕ :complete-fn."
-  ([slug text] (bounce! slug text {}))
-  ([slug text opts]
-   (let [sess     (open! slug opts)
+  {:manual   "Try ONE input against a session without changing its tape."
+   :args     [:catn [:slug Slug] [:text :string] [:opts [:? EvalOpts]]]
+   :defaults {opts {}}}
+  [slug text opts]
+  (let [sess     (open! slug opts)
          complete ((get opts :complete-fn completion/default-complete) (:config sess) slug)
          step     (eval-rf {:complete complete})]
      (event! {:kind :bounce! :slug slug :msg "…"})
@@ -596,9 +653,9 @@
           :repl/depth  (count (:tape sess))})   ; the FIXED depth — unchanged
        (catch Throwable t
          (event! (err-receipt :bounce! slug t))
-         {:repl/id slug :repl/error (str "send failed: " (ex-message t))})))))
+         {:repl/id slug :repl/error (str "send failed: " (ex-message t))}))))
 
-(defn ^{:manual "Try MANY inputs against the same fixed tape; nothing is saved."} trampoline!
+(defcommand trampoline!
   "Bounce a vector of VARIED inputs off the session's FIXED tape — fan-out from
    the fixed point (`map`, not `fold`: inputs never accumulate into each other;
    fork-isolation from the immutable acc gives per-bounce independence). The tape
@@ -608,9 +665,11 @@
    are independent, unlike battery's all-or-nothing fold). This is the fast
    prompt-iteration driver: load a context once, see what every candidate input
    produces from that same fixed point. opts: config overrides ⊕ :complete-fn."
-  ([slug inputs] (trampoline! slug inputs {}))
-  ([slug inputs opts]
-   (let [sess     (open! slug opts)
+  {:manual   "Try MANY inputs against the same fixed tape; nothing is saved."
+   :args     [:catn [:slug Slug] [:inputs [:sequential :string]] [:opts [:? EvalOpts]]]
+   :defaults {opts {}}}
+  [slug inputs opts]
+  (let [sess     (open! slug opts)
          prefix   (:tape sess)
          complete ((get opts :complete-fn completion/default-complete) (:config sess) slug)
          step     (eval-rf {:complete complete})
@@ -632,9 +691,9 @@
               :msg  (str (- (count bounces) errs) "✓" (when (pos? errs) (str " " errs "✗")))})
      {:repl/id      slug
       :repl/depth   (count prefix)
-      :repl/bounces bounces})))
+      :repl/bounces bounces}))
 
-(defn ^{:manual "Branch a session copy. {:at N} branches from an older turn."} fork!
+(defcommand fork!
   "Copy the tape (call/cc): a NEW session `to` carrying the same tape ∧ config as
    `from`, with any `opts` config overrides merged in — two continuations from
    one prefix (cheap for the model: shared KV prefix). Override a knob (e.g.
@@ -658,9 +717,11 @@
    error — `old` is exactly the map `f` saw on its one successful
    application (swap!'s contract), so checking against it post-hoc carries
    no TOCTOU window of its own."
-  ([from to] (fork! from to {}))
-  ([from to opts]
-   (let [[old new]
+  {:manual   "Branch a session copy. {:at N} branches from an older turn."
+   :args     [:catn [:from Slug] [:to Slug] [:opts [:? ForkOpts]]]
+   :defaults {opts {}}}
+  [from to opts]
+  (let [[old new]
          (registry/mutate!
           (fn [reg]
             (let [src (get reg from)]
@@ -697,7 +758,7 @@
          {:repl/id     to
           :repl/from   from
           :repl/depth  (count (:tape copy))
-          :repl/config (:config copy)})))))
+          :repl/config (:config copy)}))))
 
 (defn variant-slug
   "The cross-ns child-naming convention (D5): `ab!` names a variant child
@@ -709,7 +770,7 @@
   [from vk]
   (keyword (str (name from) "-" (name vk))))
 
-(defn ^{:manual "Fork N config variants and send the same probe to each. Iterating? Fan the next generation off the winner with {:at 0} — clean tape, lineage kept."} ab!
+(defcommand ab!
   "Fan ONE probe across VARIED interpreters from a common parent — the DUAL of
    trampoline! (which fans varied inputs off one interpreter). ∀variant:
    fork!(from → from-variant, config overrides ⊕ :at) → eval!(probe). The
@@ -751,9 +812,12 @@
    Per-variant errors as data — one failed arm doesn't sink the fan. Returns
    {:repl/id :repl/probe :repl/variants {vk fork-error | eval-result}}.
    (STANDALONE accretion #2 — not in anima.)"
-  ([from variants probe] (ab! from variants probe {}))
-  ([from variants probe opts]
-   (let [arms (into {}
+  {:manual   "Fork N config variants and send the same probe to each. Iterating? Fan the next generation off the winner with {:at 0} — clean tape, lineage kept."
+   :args     [:catn [:from Slug] [:variants [:map-of :keyword SessionOpts]]
+              [:probe :string] [:opts [:? AbOpts]]]
+   :defaults {opts {}}}
+  [from variants probe opts]
+  (let [arms (into {}
                     (map (fn [[vk overrides]]
                            (let [to     (variant-slug from vk)
                                  forked (fork! from to (merge overrides (select-keys opts [:at])))]
@@ -766,7 +830,7 @@
               :msg  (str (- (count arms) errs) "✓" (when (pos? errs) (str " " errs "✗")))})
      {:repl/id       from
       :repl/probe    probe
-      :repl/variants arms})))
+      :repl/variants arms}))
 
 ;; ── the ONE submission grammar — D5 ─────────────────────────────────────────
 
