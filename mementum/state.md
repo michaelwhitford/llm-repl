@@ -48,10 +48,15 @@ projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
 Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh`
 (committed — build→replace→eval-gate); no daemon. Stale cores refuse.
 
-**Next pickup:** manual-malli-schemas — design RATIFIED 2026-08-29 @
-architecture.md § D8 (`defcommand`, defn-grammar attr-map; guard/errors pure
-fn ≡ mechanism; :catn; opts derived from config-schema; guardrails rejected →
-memories/guardrails-is-not-a-boundary-guard). Now a BUILD ticket, ~1 session.
+**Next pickup:** the STRICTNESS ARC — full state audit 2026-08-29
+(`knowledge/state-audit.md`: ~34 STRICT · ~13 MIXED · ~5 LOOSE; looseness
+clusters at S2 SEAMS, worst ≡ the tap swallow — the audit channel itself
+fails silently). **The v0.3.0 tag WAITS on this arc** (human): tap-failure-
+receipts → daemon-state-hygiene → term-state-chokepoint → registration-guards
+→ config-unset-semantics (needs ratification — nil collides with D7
+present-nil) ⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
+attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
+rejected → memories/guardrails-is-not-a-boundary-guard).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
 Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 `/work` — **NOT this repo**. Probing a model through it? Read
@@ -79,5 +84,7 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 
 ## Queue
 
-→ `queue.md` (prospective memory). Nothing in progress. Front:
-manual-malli-schemas → split-pane-tape-view → compare-pane.
+→ `queue.md` (prospective memory). Nothing in progress. Front ≡ the
+strictness arc (tag gate): tap-failure-receipts → daemon-state-hygiene →
+term-state-chokepoint → registration-guards → config-unset-semantics →
+manual-malli-schemas.
