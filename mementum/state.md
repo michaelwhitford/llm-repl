@@ -29,7 +29,7 @@ compaction (over-compaction CONFABULATES silently ⇒ arm-diff validation,
 send-ring memory-only RATIFIED; HTTP 400 UNEXPLAINED) ·
 registry-fetch-projection (wire ≡ `registry/view`, 623.8→36.0KB @ n=300 ≡
 knowledge/wire-protocol.md) · clojure-eval-per-form-values (`=> v` per form,
-stdout interleaved, nREPL shape). Suite now 206/695.
+stdout interleaved, nREPL shape). Suite now 210/709.
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
@@ -63,8 +63,12 @@ receipt) · ✅ daemon-state-hygiene (atomic `write-state!`, corrupt →
 `.corrupt` aside ⊕ loud, `clean-state!` reports failures, ONE
 `read-port-file`) · ✅ term-state-chokepoint (`update-state!` ⊕ closed
 `state-keys`, 13 sites rewired, main's reaches → named mutators, term's
-first test ns); suite 203/674. Three BUILD tickets remain:
-registration-guards → config-unset-semantics ⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
+first test ns) · ✅ registration-guards (guarded `register-tool!` over
+upstream register!, `register-manual-ns!` find-ns gate, `event!` EDN
+assert) · ✅ config-unset-semantics (`unset!` release valve; per-key-class
+RATIFIED in-build: prompt keys dissoc, seeded knobs re-seed from live
+default-config); suite 210/709. ONE BUILD ticket remains:
+manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
 attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
 rejected → memories/guardrails-is-not-a-boundary-guard).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
@@ -95,5 +99,4 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front ≡ the
-strictness arc (tag gate), 4/6 done: config-unset-semantics →
-manual-malli-schemas.
+strictness arc (tag gate), 5/6 done: manual-malli-schemas is the last.

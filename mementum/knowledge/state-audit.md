@@ -64,12 +64,17 @@ convention — and the worst one is the audit channel itself.
    delete. Bonus from the same ticket: `read-port-file` ≡ THE one
    .nrepl-port parse path (was 2 divergent ones — see "Smaller" below),
    absent/blank → nil, garbage → loud throw carrying file ∧ content.
-4. **`llm_repl.clj:168-195` — config merge stickiness** 🟡 documented.
-   `open!` merges, never replaces; absence ≠ reset; poison values outlive
-   everything short of `drop!`. Design decision needed: see queue
-   config-unset-semantics — nil COLLIDES with D7's present-nil ≡
-   explicitly-none on prompt keys (`:system nil` must stay meaningful), so
-   nil-clears cannot apply uniformly.
+4. **`llm_repl.clj:168-195` — config merge stickiness** 🟡 → ✅ **FIXED
+   2026-08-29** (config-unset-semantics, D7 amendment). Stickiness stays BY
+   DESIGN (`open!` remains a pure merge); the release valve is the explicit
+   `unset!` command — nil never overloaded (present-nil ≡ explicitly-none
+   STOPS the chain; unset RESUMES it — opposites, two spellings). Per-key
+   ratified in-build: prompt-stack keys (:system :preamble :orientation)
+   DISSOC (request-time chain resumes); the five default-seeded knobs
+   RE-SEED from live `(default-config)` — bare dissoc would mint new
+   poison (:model absent ≡ broken send; :tools absent ≡ none-not-default).
+   Errors as data (a command's return is read); `unsettable-keys` public,
+   taught by the error message until D8's schema lands.
 5. **`tools.clj:138` — unvalidated tool registration** 🟡 → ✅ **FIXED
    2026-08-29** (registration-guards, D9's second build ticket). All three
    seams throw per the boundary-idiom rule (teaching ex-message ⊕
