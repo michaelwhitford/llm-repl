@@ -25,13 +25,20 @@ convention — and the worst one is the audit channel itself.
 
 ## Ranked gaps (→ queue tickets, same date)
 
-1. **`registry.clj:83,90` — tap swallow-on-throw** 🔴. `event-tap*`/
-   `mutate-tap*` invoked under `(catch Throwable _ nil)`. A broken tap ⇒
-   durability silently stops while the app runs fine. S3* failing silently —
-   who watches the watcher: nobody. Note: trace's OWN disk errors never
-   reach the tap boundary (they're caught → `trace-fail!` receipts inside
-   trace), so a throw HERE means the tap fn itself is structurally broken.
-   Fix trap: a tap-failure receipt must not re-invoke the tap (recursion).
+1. **`registry.clj:83,90` — tap swallow-on-throw** 🔴 → ✅ **FIXED
+   2026-08-29** (tap-failure-receipts, D9's first build ticket). Was:
+   `event-tap*`/`mutate-tap*` invoked under `(catch Throwable _ nil)` — a
+   broken tap ⇒ durability silently stops while the app runs fine; S3*
+   failing silently. Now: `run-tap!` guards both seams — a throw DISARMS
+   (reset! slot nil FIRST) then emits ONE `:tap-disarmed` receipt naming
+   the tap ∧ throwable. The recursion trap ("a tap-failure receipt must not
+   re-invoke the tap") is closed BY CONSTRUCTION: the slot is nil before
+   the receipt's `event!` runs. One failure ≡ one receipt (test-locked, no
+   spam); the mutation path is unharmed (swap ∧ EDN assert ∧ version bump
+   all precede the tap); a still-armed event-tap observes a mutate-tap
+   disarm, so the transcript records the durability loss. Still true: a
+   throw HERE means the tap FN itself is structurally broken (trace catches
+   its own disk errors internally → `trace-fail!` receipts).
 2. **`tui/term.clj` state atom — no chokepoint** 🟠. ~11 swap! sites across
    2 namespaces (`term.clj` + `main.clj` reach in directly), no key schema.
    Typo'd key ⇒ silent no-repaint. Every individual swap body IS pure — the

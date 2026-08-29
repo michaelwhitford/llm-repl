@@ -29,7 +29,7 @@ compaction (over-compaction CONFABULATES silently ⇒ arm-diff validation,
 send-ring memory-only RATIFIED; HTTP 400 UNEXPLAINED) ·
 registry-fetch-projection (wire ≡ `registry/view`, 623.8→36.0KB @ n=300 ≡
 knowledge/wire-protocol.md) · clojure-eval-per-form-values (`=> v` per form,
-stdout interleaved, nREPL shape). Suite now 192/620.
+stdout interleaved, nREPL shape). Suite now 196/634.
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
@@ -57,8 +57,10 @@ clusters at S2 SEAMS, worst ≡ the tap swallow — the audit channel itself
 fails silently). **The v0.3.0 tag WAITS on this arc** (human) — ALL DESIGN
 RATIFIED (D7-amend `unset!` · D8 `defcommand` · D9 boundary-idiom rule:
 data only where the return is READ, discarded-return side effects THROW,
-throws are model-safe via tools.clj:89), all six now BUILD tickets:
-tap-failure-receipts → daemon-state-hygiene → term-state-chokepoint →
+throws are model-safe via tools.clj:89). ✅ tap-failure-receipts SHIPPED
+2026-08-29 (D9's first build: `run-tap!` disarm-on-throw ⊕ `:tap-disarmed`
+receipt, suite 196/634); five BUILD tickets remain:
+daemon-state-hygiene → term-state-chokepoint →
 registration-guards → config-unset-semantics ⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
 attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
 rejected → memories/guardrails-is-not-a-boundary-guard).
@@ -90,6 +92,6 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front ≡ the
-strictness arc (tag gate): tap-failure-receipts → daemon-state-hygiene →
+strictness arc (tag gate), 1/6 done: daemon-state-hygiene →
 term-state-chokepoint → registration-guards → config-unset-semantics →
 manual-malli-schemas.
