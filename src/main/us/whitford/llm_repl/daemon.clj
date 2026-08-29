@@ -71,17 +71,93 @@
   (boolean (and pid port (pid-alive? pid) (reachable? port))))
 
 ;; ── state file ────────────────────────────────────────────────────────────────
+;; Hygiene (audit §3, strictness arc): the spit is temp+rename ATOMIC (a
+;; reader can never see a torn write), a corrupt read is NEVER silently ≡
+;; absent (it renames aside as evidence ⊕ says so on stderr — the silent
+;; version read a torn daemon.edn as "never started" and spawned a SECOND
+;; daemon racing the first), and a failed cleanup delete is reported, not
+;; dropped (a survivor file resurrects stale state at the next discover).
+
+(defn- move-file!
+  "`Files/move` src→dst, atomic ∧ replacing — the rename half of every
+   write/aside below. Throws on failure (the caller decides how loud)."
+  [^java.io.File src ^java.io.File dst]
+  (java.nio.file.Files/move
+   (.toPath src) (.toPath dst)
+   (into-array java.nio.file.CopyOption
+               [java.nio.file.StandardCopyOption/ATOMIC_MOVE
+                java.nio.file.StandardCopyOption/REPLACE_EXISTING])))
+
+(defn write-state!
+  "Write `st` as `pdir`'s daemon.edn ATOMICALLY: spit to a temp sibling in
+   the same directory, then rename into place (`ATOMIC_MOVE` — same-volume
+   by construction). A concurrent `read-state` sees the old complete file or
+   the new complete file, never a torn one. Spawner-owned (`spawn!` is the
+   only production caller); public for the twin suite
+   (memories/bb-jvm-private-var-twin-trap)."
+  [pdir st]
+  (let [tmp (io/file (state-dir pdir) (str "daemon.edn.tmp." (System/nanoTime)))]
+    (spit tmp (pr-str st))
+    (move-file! tmp (state-file pdir))))
 
 (defn read-state
-  "The recorded daemon state for `pdir`, or nil (unreadable ≡ nil)."
+  "The recorded daemon state for `pdir` (a map), or nil when nothing usable
+   is recorded. CORRUPT ≢ ABSENT, never silently: an unparseable (or
+   parseable-but-not-a-map) daemon.edn is renamed aside to
+   `daemon.edn.corrupt` — evidence preserved for a human — with ONE loud
+   stderr line naming both paths, and ONLY THEN treated absent so the next
+   spawn gets a clean slate. If even the aside rename fails, the line says
+   that too (the file stays; better a repeated loud read than silent loss)."
   [pdir]
   (let [f (state-file pdir)]
     (when (.exists f)
-      (try (edn/read-string (slurp f)) (catch Exception _ nil)))))
+      (let [v (try (edn/read-string (slurp f)) (catch Exception _ ::corrupt))]
+        (if (map? v)
+          v
+          (let [aside (io/file (state-dir pdir) "daemon.edn.corrupt")
+                moved? (try (move-file! f aside) true (catch Exception _ false))]
+            (binding [*out* *err*]
+              (println (str "llm-repl: corrupt daemon state at " (.getPath f)
+                            (if moved?
+                              (str " — moved aside to " (.getPath aside))
+                              " — could NOT be moved aside (file left in place)")
+                            "; treating as no daemon recorded")))
+            nil))))))
 
-(defn- clean-state! [pdir]
-  (.delete (state-file pdir))
-  (let [pf (port-file pdir)] (when (.exists pf) (.delete pf))))
+(defn clean-state!
+  "Delete `pdir`'s daemon.edn ∧ .nrepl-port. Returns nil when everything
+   present was deleted, else `{:failed [path …]}` — and each failure is ONE
+   loud stderr line (audit §3: the old version dropped `.delete`'s boolean;
+   a survivor file resurrects stale state at the next discover, so failing
+   to remove it must never be silent). Public for the twin suite."
+  [pdir]
+  (let [failed (vec (for [^java.io.File f [(state-file pdir) (port-file pdir)]
+                          :when (and (.exists f) (not (.delete f)))]
+                      (do (binding [*out* *err*]
+                            (println (str "llm-repl: failed to delete " (.getPath f)
+                                          " — stale daemon state may be rediscovered")))
+                          (.getPath f))))]
+    (when (seq failed) {:failed failed})))
+
+(defn read-port-file
+  "THE one .nrepl-port parse path (audit §3 unified the former two): the
+   file's trimmed content as a port long, or nil when the file is
+   absent/blank (≡ no port dropped yet). UNPARSEABLE content throws loud
+   with the file ∧ content in ex-data — a .nrepl-port holding garbage is a
+   broken environment, not a missing daemon (both former paths threw a bare
+   NumberFormatException here; now it names the evidence). Public for the
+   twin suite."
+  [pdir]
+  (let [f (port-file pdir)]
+    (when (.exists f)
+      (let [s (str/trim (slurp f))]
+        (when-not (str/blank? s)
+          (try (Long/parseLong s)
+               (catch NumberFormatException _
+                 (throw (ex-info (str "llm-repl: unparseable .nrepl-port at "
+                                      (.getPath f) " — content " (pr-str s)
+                                      " is not a port number")
+                                 {:file (.getPath f) :content s})))))))))
 
 (defn discover
   "The LIVE daemon state for `pdir`, or nil. A stale record (pid gone or port
@@ -98,14 +174,12 @@
    in the CWD (the container drops its port into the mounted /work, so attach is
    zero-config from that dir). nil if nothing resolves."
   [spec]
-  (let [spec (if (str/blank? spec)
-               (let [f (port-file (project-dir))]
-                 (when (.exists f) (str/trim (slurp f))))
-               spec)]
-    (when-not (str/blank? spec)
-      (if (str/includes? spec ":")
-        (let [[h p] (str/split spec #":" 2)] [h (Integer/parseInt p)])
-        ["127.0.0.1" (Integer/parseInt spec)]))))
+  (if (str/blank? spec)
+    (when-let [p (read-port-file (project-dir))]
+      ["127.0.0.1" p])
+    (if (str/includes? spec ":")
+      (let [[h p] (str/split spec #":" 2)] [h (Integer/parseInt p)])
+      ["127.0.0.1" (Integer/parseInt spec)])))
 
 ;; ── spawn (detached) ────────────────────────────────────────────────────────────
 
@@ -160,14 +234,11 @@
                                       {:pdir pdir :cmd cmd} e))))
            deadline (+ (System/currentTimeMillis) timeout-ms)]
        (loop []
-         (let [pf (port-file pdir)]
+         (let [port (read-port-file pdir)]
            (cond
-             (and (.exists pf)
-                  (let [p (str/trim (slurp pf))]
-                    (and (not (str/blank? p)) (reachable? (Long/parseLong p)))))
-             (let [port (Long/parseLong (str/trim (slurp pf)))
-                   st   {:pid pid :port port :cwd pdir :started-at (System/currentTimeMillis)}]
-               (spit (state-file pdir) (pr-str st))
+             (and port (reachable? port))
+             (let [st {:pid pid :port port :cwd pdir :started-at (System/currentTimeMillis)}]
+               (write-state! pdir st)
                st)
 
              (not (pid-alive? pid))
