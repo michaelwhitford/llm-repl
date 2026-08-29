@@ -109,6 +109,28 @@ false/blank ≡ explicitly none). A host embedding the library may bypass
 roster entirely via `:complete-fn`; roster is the DEFAULT provider, not a
 required path.
 
+**Inert at require (D10, ratified 2026-08-29):** requiring any library ns
+does NO ambient IO — no file chain, no env, no home dir. Until a host
+initializes config, `builtin-defaults` govern. The host-facing config
+surface, STABLE (the rest of roster stays internal):
+
+```clojure
+(require '[us.whitford.llm-repl.roster :as roster])
+(roster/init! source)       ;; source ≡ {:builtin true} | {:map m}
+                            ;;          | {:fn thunk} | {:files [paths]}
+(roster/reload-config!)     ;; re-folds from the CURRENT source
+(roster/config-sources)     ;; the default standalone file chain
+```
+
+Every source folds over `builtin-defaults` (per-section shallow merge)
+through the ONE `validate-config` — `init!` throws loud on the host's
+stack (bad shape, unreadable file, invalid merge), never at require.
+`init!` replaces atomically at any time; already-open sessions keep their
+materialized configs (stickiness law). The standalone entrypoints call
+`(init! {:files (config-sources)})` themselves — ambient resolution is
+the standalone tool's behavior, never the library's. A `:complete-fn`
+host that registers no roster models never needs any of this.
+
 ## INTERNAL — may churn without notice
 
 - `registry` internals beyond the two derefs + `event!`/`wait-for-event!`
@@ -117,7 +139,8 @@ required path.
 - ALL wire ∧ surface namespaces: `net` `client` `daemon` `tui.frame`
   `tui.term` `main` — the standalone tool, invisible to a library consumer
 - `roster` internals ∧ `llm.llamacpp` (hosts wanting the backend directly
-  should say so; it can be promoted)
+  should say so; it can be promoted) — EXCEPT the § 6 config surface
+  (`init!` `reload-config!` `config-sources`), which is stable
 - the TUI's visual language, receipts' rendered text, banner content
 
 ## Versioning

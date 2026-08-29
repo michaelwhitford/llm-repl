@@ -412,6 +412,76 @@ mechanism, no new machinery.
   m/schema-valid input-schema ∧ collision check) ∧ `register-manual-ns!`
   validates find-ns — both THROW per this rule, humanized message.
 
+### D10 — library-inert config: the source is data, `init!` is the read (ratified 2026-08-29)
+
+From anima's migration, the first consumer (memories/
+ambient-config-leaks-into-embedding-hosts): roster's `defonce config*` ran
+`load-config` at REQUIRE — every embedding host silently inherited the
+operator's `~/.config/llm-repl/config.edn` (observed live: `:tools true`
+leaked into anima's embedded session configs; one stray `default-complete`
+call would have ARMED self-eval tools inside the host). An opt-out knob
+cannot fix this — the read fires before any host call could run. Laziness
+is a PRECONDITION of every fix.
+
+**The law (also encoded as the memory's general rule):** a ns consumed as
+a library does no ambient IO at require. Ambient resolution belongs to the
+STANDALONE entrypoints, which perform it explicitly at startup. The
+in-house precedents are `trace` (nil-until-`init!`) and escapement's
+library mode (inject credentials, never read env).
+
+**The mechanism (roster):**
+
+- `config*` holds `{:source s :value v}` in ONE atom (source ∧ value swap
+  together — a reload can never tear them apart). At require:
+  `{:source {:builtin true} :value builtin-defaults}`. Zero IO. `(config)`
+  reads `:value`.
+- **The source is data**, one of four shapes:
+  `{:builtin true}` — builtins, nothing else ·
+  `{:map m}` — a literal config map (a host's embedded config) ·
+  `{:fn thunk}` — a thunk producing a map (a host's live source) ·
+  `{:files [paths]}` — the file chain (the standalone shape).
+- **Every shape folds over `builtin-defaults`** (the existing per-section
+  shallow merge) **through the ONE `validate-config`**. No `:replace` mode
+  (ratified: YAGNI) — builtins guarantee configuration-completeness, the
+  same law as `unset!`'s re-seed: whatever governs a fresh session governs.
+- `init! source` — validates the source SHAPE, resolves it, folds,
+  `reset!`s. Called for effect ⇒ THROWS loud per D9 (bad shape, unreadable
+  file, invalid merge — on the caller's stack, at init time, never at
+  require). Returns `{:source new :replaced old}` so a caller that reads
+  can see a replacement.
+- `reload-config!` re-folds from the CURRENT source (this kills the
+  reload-resurrects-leak hole: a host that `init!`ed `{:map …}` can never
+  have a reload sneak the operator's files back in). Per shape:
+  `{:files}` re-reads the captured paths (disk is live; `LLM_REPL_CONFIG`
+  was read once, at chain construction) · `{:fn}` re-invokes (live) ·
+  `{:map}` ∧ `{:builtin}` re-fold the same value (static — reload is a
+  harmless no-op).
+- **`init!` after first use REPLACES, atomically, documented** (ratified:
+  no throw, no read-tracking). `reload-config!` already replaces live
+  config mid-flight (live-verified, tapes intact); read-tracking would be
+  new machinery guarding a hazard the inert default already removed.
+  Already-open sessions keep their materialized configs — the stickiness
+  law, unchanged.
+
+**The entrypoints:** `main/-main`'s FIRST act ≡
+`(roster/init! {:files (roster/config-sources)})` — covers TUI, `--plain`,
+`--headless` (≡ `bb nrepl` ≡ the container CMD), and every spawned daemon.
+The one other ambient reader is `daemon.clj`'s `bb status` path
+(`attach-spec` via requiring-resolve) — same explicit init there.
+`config-sources` stays the default chain builder, public.
+
+**Placement (ratified):** mechanism stays in roster; `roster/init!` ∧
+`roster/reload-config!` ∧ `roster/config-sources` are PROMOTED to the
+stable library surface (library-contract § 6). No api-ns re-export:
+`init!` is a host/boot concern, not a session command — it does not belong
+on the manual where the model would see it, and a delegation wrapper adds
+a name without adding a seam. A `:complete-fn` host never needs roster at
+all; a host using the default provider requires `.roster` honestly.
+
+**Named, not proposed:** full hermeticity (config as a system VALUE
+threaded through calls, no globals) — v2 shape, does not conflict with
+this design; the source-as-data atom is the stepping stone.
+
 ## Build ∧ release ∧ CI (modeled on fulcro-rad-datalevin — copy, then adapt)
 
 - `build.clj` — tools.build; `lib 'us.whitford/llm-repl`; `VERSION` env from
