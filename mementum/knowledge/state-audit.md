@@ -39,10 +39,18 @@ convention — and the worst one is the audit channel itself.
    disarm, so the transcript records the durability loss. Still true: a
    throw HERE means the tap FN itself is structurally broken (trace catches
    its own disk errors internally → `trace-fail!` receipts).
-2. **`tui/term.clj` state atom — no chokepoint** 🟠. ~11 swap! sites across
-   2 namespaces (`term.clj` + `main.clj` reach in directly), no key schema.
-   Typo'd key ⇒ silent no-repaint. Every individual swap body IS pure — the
-   pure-swap half holds; the chokepoint half doesn't.
+2. **`tui/term.clj` state atom — no chokepoint** 🟠 → ✅ **FIXED
+   2026-08-29** (term-state-chokepoint). Was: ~11 swap! sites across 2
+   namespaces (`term.clj` + `main.clj` reaching in raw), no key schema —
+   typo'd key ⇒ silent no-repaint. Now: `update-state!` ≡ THE chokepoint
+   (registry/mutate!'s pattern at TUI scale) validating every result
+   against the CLOSED `state-keys` set (12 keys) — unknown key throws loud
+   naming it; same no-rollback pin as mutate!. All 13 sites rewired;
+   main.clj's raw reaches became named mutators (`focus-slug!`,
+   `set-pending!`) beside show-overlay!/scroll-view! — main never touches
+   the atom's shape directly again. term.clj gained its first test ns
+   (term_test.clj — the chokepoint ∧ mutators need no terminal; the
+   byte-moving rest stays out of the suite by construction, D5).
 3. **`daemon.clj:78-84` — corrupt state ≡ absent** 🟠 → ✅ **FIXED
    2026-08-29** (daemon-state-hygiene). Was: `read-state` caught → nil, so
    a torn `daemon.edn` read as "never started" → spawned a SECOND daemon

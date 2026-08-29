@@ -29,7 +29,7 @@ compaction (over-compaction CONFABULATES silently ⇒ arm-diff validation,
 send-ring memory-only RATIFIED; HTTP 400 UNEXPLAINED) ·
 registry-fetch-projection (wire ≡ `registry/view`, 623.8→36.0KB @ n=300 ≡
 knowledge/wire-protocol.md) · clojure-eval-per-form-values (`=> v` per form,
-stdout interleaved, nREPL shape). Suite now 200/656.
+stdout interleaved, nREPL shape). Suite now 203/674.
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
@@ -61,8 +61,9 @@ throws are model-safe via tools.clj:89). SHIPPED 2026-08-29:
 ✅ tap-failure-receipts (`run-tap!` disarm-on-throw ⊕ `:tap-disarmed`
 receipt) · ✅ daemon-state-hygiene (atomic `write-state!`, corrupt →
 `.corrupt` aside ⊕ loud, `clean-state!` reports failures, ONE
-`read-port-file`); suite 200/656. Four BUILD tickets remain:
-term-state-chokepoint →
+`read-port-file`) · ✅ term-state-chokepoint (`update-state!` ⊕ closed
+`state-keys`, 13 sites rewired, main's reaches → named mutators, term's
+first test ns); suite 203/674. Three BUILD tickets remain:
 registration-guards → config-unset-semantics ⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
 attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
 rejected → memories/guardrails-is-not-a-boundary-guard).
@@ -94,5 +95,5 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front ≡ the
-strictness arc (tag gate), 2/6 done: term-state-chokepoint →
-registration-guards → config-unset-semantics → manual-malli-schemas.
+strictness arc (tag gate), 3/6 done: registration-guards →
+config-unset-semantics → manual-malli-schemas.
