@@ -29,7 +29,7 @@ compaction (over-compaction CONFABULATES silently ⇒ arm-diff validation,
 send-ring memory-only RATIFIED; HTTP 400 UNEXPLAINED) ·
 registry-fetch-projection (wire ≡ `registry/view`, 623.8→36.0KB @ n=300 ≡
 knowledge/wire-protocol.md) · clojure-eval-per-form-values (`=> v` per form,
-stdout interleaved, nREPL shape). Suite now 203/674.
+stdout interleaved, nREPL shape). Suite now 206/695.
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
@@ -95,5 +95,5 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front ≡ the
-strictness arc (tag gate), 3/6 done: registration-guards →
-config-unset-semantics → manual-malli-schemas.
+strictness arc (tag gate), 4/6 done: config-unset-semantics →
+manual-malli-schemas.

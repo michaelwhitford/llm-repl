@@ -70,12 +70,19 @@ convention — and the worst one is the audit channel itself.
    config-unset-semantics — nil COLLIDES with D7's present-nil ≡
    explicitly-none on prompt keys (`:system nil` must stay meaningful), so
    nil-clears cannot apply uniformly.
-5. **`tools.clj:138` — unvalidated tool registration** 🟡. Zero local gating
-   on what a host registers; lands directly on the model's tool wire.
-   Kin: `register-manual-ns!` (llm_repl.clj:220) accepts a typo'd ns-sym
-   that later breaks `(help)`/`(manual)` for EVERY caller (`find-ns` → nil →
-   `ns-publics` throws); `events*` (registry.clj:53) lacks the EDN assert
-   its sibling `sessions*` has.
+5. **`tools.clj:138` — unvalidated tool registration** 🟡 → ✅ **FIXED
+   2026-08-29** (registration-guards, D9's second build ticket). All three
+   seams throw per the boundary-idiom rule (teaching ex-message ⊕
+   `{:errors …}` ex-data; discarded-return side effects THROW):
+   `tools/register-tool!` ≡ the guarded chokepoint — satisfies Tool ∧
+   keyword tool-name ∧ input-schema compiles as malli AT REGISTRATION (not
+   on the model's turn) ∧ collision throws (silent replacement was the
+   failure; `=`-tool re-register ≡ no-op for reload idempotence; deliberate
+   replace ≡ upstream `tp/register!`, the labeled escape).
+   `register-manual-ns!` validates symbol ∧ `find-ns` — the typo'd-ns
+   time-bomb in `(help)` is dead. `events*` got `sessions*`'s EDN assert at
+   `event!` — validated BEFORE the ring (e is a value, unlike mutate!'s
+   opaque f), ring stays clean, no version bump on reject.
 
 ## Smaller / accepted
 
