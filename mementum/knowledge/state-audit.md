@@ -43,11 +43,19 @@ convention — and the worst one is the audit channel itself.
    2 namespaces (`term.clj` + `main.clj` reach in directly), no key schema.
    Typo'd key ⇒ silent no-repaint. Every individual swap body IS pure — the
    pure-swap half holds; the chokepoint half doesn't.
-3. **`daemon.clj:78-84` — corrupt state ≡ absent** 🟠. `read-state` catches
-   → nil, so a torn `daemon.edn` write reads as "never started" → spawns a
-   SECOND daemon racing the first. `clean-state!` drops `.delete`'s failure
-   boolean. No temp+rename on the `spit` (trace's disk layer has it; this
-   path doesn't).
+3. **`daemon.clj:78-84` — corrupt state ≡ absent** 🟠 → ✅ **FIXED
+   2026-08-29** (daemon-state-hygiene). Was: `read-state` caught → nil, so
+   a torn `daemon.edn` read as "never started" → spawned a SECOND daemon
+   racing the first; `clean-state!` dropped `.delete`'s boolean; no
+   temp+rename on the spit. Now: `write-state!` ≡ spit-to-temp-sibling ⊕
+   `ATOMIC_MOVE` rename (a reader sees old-complete or new-complete, never
+   torn); `read-state` on corrupt (unparseable ∨ not-a-map) moves the file
+   aside to `daemon.edn.corrupt` VERBATIM ⊕ one loud stderr line naming
+   both paths, THEN treats absent — evidence preserved, silence dead;
+   `clean-state!` returns `{:failed [paths]}` ⊕ a loud line per failed
+   delete. Bonus from the same ticket: `read-port-file` ≡ THE one
+   .nrepl-port parse path (was 2 divergent ones — see "Smaller" below),
+   absent/blank → nil, garbage → loud throw carrying file ∧ content.
 4. **`llm_repl.clj:168-195` — config merge stickiness** 🟡 documented.
    `open!` merges, never replaces; absence ≠ reset; poison values outlive
    everything short of `drop!`. Design decision needed: see queue
@@ -71,8 +79,9 @@ convention — and the worst one is the audit channel itself.
   retry f under contention — side effects in f would double-fire).
 - trace `on-mutate` cross-write ordering: explicitly accepted non-atomicity
   (each write atomic, sequence unordered — its docstring says so).
-- `.nrepl-port`: 2 readers with different parse paths (daemon.clj:102,163);
-  single writer; low risk. Env reads scattered but single-site each.
+- `.nrepl-port`: ~~2 readers with different parse paths (daemon.clj:102,163)~~
+  → unified into `daemon/read-port-file` 2026-08-29 (daemon-state-hygiene).
+  Env reads scattered but single-site each.
 - `term.clj:252` `stopped?` — the codebase's one CAS, correctly idempotent.
 - `llamacpp.clj:230` acc atom — textbook function-local, never escapes.
 - `binding [*ns* *ns*]` pattern consistent at both eval surfaces
