@@ -40,11 +40,15 @@ before re-deriving; recall > re-derivation).
 **First consumer landed 2026-08-29:** anima migrated to the library
 (`:local/root`, thin adapter) — CLEAN: its full pre-migration llm-repl test
 file passed UNCHANGED, live qwen probes work with `:complete-fn` injected.
-Three seam findings ingested → queue: **library-config-inert-default**
-(HIGH, design ticket — require-time `config*` leaks the operator's machine
-config into every embedding host, observed live as `:tools true` in anima's
-session configs; PRE-RC gate) · open-defaults-create-only ·
-trace-capture-hook. Trap ≡ memories/ambient-config-leaks-into-embedding-hosts.
+Three seam findings ingested → queue; the HIGH one is SHIPPED:
+✅ **library-config-inert-default** (D10 ratified ∧ built 2026-08-29 —
+library INERT at require, config source ≡ DATA
+`{:builtin}|{:map}|{:fn}|{:files}`, `init!` ≡ the one read (throws loud,
+installs nothing on failure), `reload-config!` re-folds from the CURRENT
+source; entrypoints read the chain explicitly; `init!`/`reload-config!`/
+`config-sources` promoted to library-contract § 6; PRE-RC gate CLOSED).
+Remaining: open-defaults-create-only · trace-capture-hook. Trap ≡
+memories/ambient-config-leaks-into-embedding-hosts.
 
 **Human moves open:** v0.3.0 tag · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).

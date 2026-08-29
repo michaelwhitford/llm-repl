@@ -15,7 +15,8 @@ the library defaults to builtins until the host calls `init!`.
 
 Corollaries, learned the hard way (anima migration, 2026-08-29 — roster's
 require-time `config*` leaked the operator's `:tools true` into embedded
-session configs; fix ≡ library-config-inert-default):
+session configs; FIXED same day ≡ architecture.md § D10, exactly this
+law: source-as-data, `init!` ≡ the one read, reload re-folds from source):
 
 - **Laziness is a precondition of every fix.** An opt-out knob can't help —
   the read fires at require, before any host call could run.
