@@ -53,8 +53,8 @@ Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh
 clusters at S2 SEAMS, worst ≡ the tap swallow — the audit channel itself
 fails silently). **The v0.3.0 tag WAITS on this arc** (human): tap-failure-
 receipts → daemon-state-hygiene → term-state-chokepoint → registration-guards
-→ config-unset-semantics (needs ratification — nil collides with D7
-present-nil) ⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
+→ config-unset-semantics (RATIFIED: explicit `unset!`, nil not overloaded)
+⊕ manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
 attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
 rejected → memories/guardrails-is-not-a-boundary-guard).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).

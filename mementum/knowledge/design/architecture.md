@@ -268,6 +268,21 @@ Amendments from the 2026-08-27 container session:
   layer with nucleus lambda-notation prompts; no prompt text is ever
   architecture. Any layer accepts a literal string or `{:file path}`.
   Schema: CLOSED ⊕ an `:ext` escape hatch for embedding hosts.
+  AMENDED (2026-08-29, ratified — state-audit arc): session config
+  overrides are STICKY by design (`open!`/`fork!` merge, absence ≠ reset)
+  and the release valve is EXPLICIT — a new **`unset!`** command dissocs
+  named override keys, so the chain resumes (session > model > provider >
+  root). `nil` is NOT overloaded: present-nil keeps its D7 meaning
+  (explicitly none) on prompt keys. The two semantics are OPPOSITES —
+  nil STOPS the chain, unset RESUMES it — so they get two spellings; a
+  per-key-class nil (one spelling, two meanings) and a sentinel value
+  (`:config/unset`) were both rejected. `unset!` is manual-listed ∧
+  D8-guarded (its schema teaches the model which keys are unsettable);
+  `open!` stays a pure merge — it only ever adds/updates, never secretly
+  removes. Root motivation: today a poison override outlives every reset
+  attempt short of `drop!` (sledgehammer for a thumbtack), and the
+  un-sticking knowledge exists nowhere on the surface — `unset!` in
+  `(help)` fixes both.
 
 ### D8 — `defcommand`: the manual field grows schemas (ratified 2026-08-29)
 
