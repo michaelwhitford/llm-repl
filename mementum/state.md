@@ -16,7 +16,9 @@ llm-repl — an LLM chat completion as a branchable continuation: the tape
 live. Humans (TUI), models (self-eval), editors ≡ equal nREPL clients of one
 persistent core. Two consumers: standalone tool (`bb llm-repl`) and library
 for anima (`us.whitford/llm-repl`, `:complete-fn` injection). v0.2.0 tagged ∧
-public; v0.3.0 complete, `0.3.0-alpha` in ~/.m2 — tag ∧ anima are the human's.
+public; v0.3.0 code-complete — tag is the human's; anima rides `:local/root`
+until an official v0.3.0 jar is cut (~/.m2 alpha CLEARED 2026-08-29, no
+stale artifact to shadow the live source).
 
 ## Frontier
 
