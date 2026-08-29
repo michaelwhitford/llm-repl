@@ -20,30 +20,33 @@ public; v0.3.0 complete, `0.3.0-alpha` in ~/.m2 — tag ∧ anima are the human'
 
 ## Frontier
 
-**Seven arcs shipped 2026-08-28** (ledgers ≡ queue.md § complete); CI is real
-— twin suite ∧ kondo ∧ schema validation, green on ubuntu.
-
-- **v030-refactor** — code ≡ the ratified design (@`4cce4be` ⊕ 🎯`30c6f78`).
-  The suite was born here: 0 → 179 (bb ∧ JVM twins, CI enforces).
-- **compaction** — over-compaction CONFABULATES silently ⇒ validation ≡
-  arm-diff, `:original` ≡ the only post-hoc ground truth.
-- **trace-durability ⊕ error-capture ⊕ send-ring** — `.llm-repl/` ≡ flight
-  recorder keyed off CWD ≡ `/work`; failed sends ALWAYS capture (✗ receipts
-  carry `:io/ref`); the SEND-RING (memory-only RATIFIED, crash-loss deliberate)
-  records EVERY send — tapeless ✓ closed. Query ≡ eval. HTTP 400: UNEXPLAINED.
-- **registry-fetch-projection** — the wire carries `registry/view` (index ⊕
-  the FOCUSED tape, ONE deref), never every tape: 623.8KB → 36.0KB at n=300.
-  Payload ∧ sockets ∧ the DECLINED push protocol ≡ knowledge/wire-protocol.md.
-- **clojure-eval-per-form-values** — `clojure_eval` echoes `=> v` PER form,
-  stdout interleaved (nREPL shape, copied); ✗ carries partial echo. 186/591.
+**Seven arcs shipped 2026-08-28** (full ledgers ≡ queue.md § complete); CI
+real — twin suite ∧ kondo ∧ schema, green. Headlines: v030-refactor (code ≡
+design @`4cce4be` ⊕ 🎯`30c6f78`; suite 0→179, bb ∧ JVM twins) ·
+compaction (over-compaction CONFABULATES silently ⇒ arm-diff validation,
+`:original` ≡ ground truth) · trace-durability ⊕ error-capture ⊕ send-ring
+(`.llm-repl/` flight recorder @ CWD ≡ `/work`; ✗ ALWAYS captures, `:io/ref`;
+send-ring memory-only RATIFIED; HTTP 400 UNEXPLAINED) ·
+registry-fetch-projection (wire ≡ `registry/view`, 623.8→36.0KB @ n=300 ≡
+knowledge/wire-protocol.md) · clojure-eval-per-form-values (`=> v` per form,
+stdout interleaved, nREPL shape). Suite now 192/620.
 
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
 tui-design-rules ∧ wire-protocol ∧ compaction ∧ frames ∧ fan-out-lineage ∧
-upstream/escapement. Traps ≡ `memories/` (24 pages, one insight each — grep
+upstream/escapement. Traps ≡ `memories/` (25 pages, one insight each — grep
 before re-deriving; recall > re-derivation).
 
-**Human moves open:** v0.3.0 tag · anima `:local/root` ∨ `0.3.0-alpha` · the
+**First consumer landed 2026-08-29:** anima migrated to the library
+(`:local/root`, thin adapter) — CLEAN: its full pre-migration llm-repl test
+file passed UNCHANGED, live qwen probes work with `:complete-fn` injected.
+Three seam findings ingested → queue: **library-config-inert-default**
+(HIGH, design ticket — require-time `config*` leaks the operator's machine
+config into every embedding host, observed live as `:tools true` in anima's
+session configs; PRE-RC gate) · open-defaults-create-only ·
+trace-capture-hook. Trap ≡ memories/ambient-config-leaks-into-embedding-hosts.
+
+**Human moves open:** v0.3.0 tag · the
 projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
 Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh`
 (committed — build→replace→eval-gate); no daemon. Stale cores refuse.
