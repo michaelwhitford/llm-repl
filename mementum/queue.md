@@ -1,6 +1,6 @@
 # new
 
-⚪ manual-malli-schemas — REMAINDER of formal-config-malli (the config half ✅ landed with refactor step 7 @f9fc63e: schema, EOF-assert, prompt stack): ^:manual commands carry malli schemas → humanized errors-as-data teach the model (λ mirror) ⊕ tool defs via malli->json-schema if MCP demand ever materializes. malli on classpath, bb-verified. · needs design ratification · 1-2 sessions
+⚪ manual-malli-schemas — DESIGN RATIFIED 2026-08-29 @ architecture.md § D8: `defcommand` macro in defn's exact grammar (attr-map carries :manual ∧ :manual/args), expansion ≡ hand-written `(or (guard/errors …) body)` — pure fn ≡ mechanism, macro ≡ sugar; :catn schemas, opts DERIVED from roster/config-schema via malli.util; errors-as-data teach the model (λ mirror); compile-time m/schema check; kondo :lint-as defn; coverage ≡ behavioral table-test over (manual). Rejected: alter-var-root wrap ∧ guardrails (→ memories/guardrails-is-not-a-boundary-guard). BUILD ticket now: guard ns ⊕ macro ⊕ ~14 conversions ⊕ tests. · knowledge/design/architecture.md § D8 · ~1 session
 ⚪ bbin-entry — `:bbin/bin` → `llm-repl` on PATH. DEFERRED until feedback says people actually want to install it. · ~30 min
 ⚪ split-pane-tape-view — watch a second session live (right pane splits). Rides tui.frame purity post-refactor. · knowledge/tui-design-rules.md · 1 session
 ⚪ compare-pane — ab! children side-by-side with config deltas; rides the SAME overlay slot as help. · knowledge/tui-design-rules.md · 1 session

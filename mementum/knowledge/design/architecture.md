@@ -195,7 +195,8 @@ Amendments from the 2026-08-27 self-eval experiments (live A/B, qwen3.6-35b):
   errors as data (the model reads and corrects — the teaching-feedback pattern
   the chat template's escalating warnings already proved effective on this
   model class). One source, four surfaces: validation, teaching errors, MCP
-  tool defs (escapement's `malli->json-schema`), docs.
+  tool defs (escapement's `malli->json-schema`), docs. Mechanism ratified
+  2026-08-29 as **D8** (`defcommand`).
 
 ### D5 — one grammar, one deliberate in-process exception
 
@@ -267,6 +268,84 @@ Amendments from the 2026-08-27 container session:
   layer with nucleus lambda-notation prompts; no prompt text is ever
   architecture. Any layer accepts a literal string or `{:file path}`.
   Schema: CLOSED ⊕ an `:ext` escape hatch for embedding hosts.
+
+### D8 — `defcommand`: the manual field grows schemas (ratified 2026-08-29)
+
+Completes D4's "manual commands carry malli input schemas" bullet with a
+mechanism. Every `^:manual` command is written with a **`defcommand` macro**
+in `defn`'s EXACT grammar — name, docstring, attr-map, argv, body — so
+readers already know the shape and kondo needs one line
+(`:lint-as clojure.core/defn`):
+
+```clojure
+(defcommand eval!
+  "Run ONE completion on the session's tape…"        ; maintainer/agent-dense
+  {:manual "Chat: send text to a session; the reply is appended to its tape."
+   :args   [:catn [:slug Slug] [:text :string] [:opts [:? SessionOpts]]]}
+  [slug text opts]
+  …body…)
+```
+
+**The macro is sugar; a pure fn is the mechanism.** `guard/errors` ≡
+`(var, args) → humanized-error-map-or-nil` — errors-or-nil polarity, NAMED
+so (the `validate-request` polarity trap, memories/thinking-false-polarity).
+On failure it returns `{:repl/error {:command … :errors <humanized>}}` —
+data, never a throw (λ api), copying `tp/dispatch`'s corrective-data shape
+(escapement precedent, live-proven on this model class). ALWAYS ON: this is
+a runtime boundary teaching the MODEL (λ mirror), not a dev-time contract —
+production is exactly where it matters.
+
+**Expansion ≡ code you'd hand-write** (the Kay discipline, from
+defsc/defmutation/guardrails): plain `defn` carrying `:manual` ∧
+`:manual/args` metadata, body wrapped as
+`(or (guard/errors #'eval! [slug text opts]) …body…)`, plus a defaulting
+arity generated from the schema's `[:? …]` tail (guard sits at the FULL
+arity only; generated arities delegate). `macroexpand-1` is the spec.
+
+Macro discipline, in full:
+1. expansion is exactly the hand-written form — inspectable, greppable;
+2. the declarative part is DATA, validated at COMPILE time — the macro runs
+   `m/schema` on `:args` at expansion, so a malformed schema fails the
+   build, not the first live call; `:args` is REQUIRED — a schema-less
+   command is UNWRITABLE (unreachable > forbidden);
+3. plain machinery underneath — `guard/errors` is independently tested and
+   callable; `defn` ⊕ an explicit guard line ≡ the SAME seam and stays
+   legal (open slot: hosts like anima may use either form).
+
+**Schemas:** `:catn` (named params → self-describing humanized errors ∧
+json-schema parameter names — no error-decoration layer). Opts schemas are
+DERIVED from `roster/config-schema` via `malli.util` (`select-keys` /
+`optional-keys`) — the opts ARE config overrides, and config keys stay ONE
+source: a new config key becomes a valid opt automatically; a typo'd opt
+gets the closed-map teaching the config loader already proved. Metadata key
+is `:manual/args` (ours — the manual-field convention), NOT `:malli/schema`
+(which implies `m/=>` function-schema semantics we are not using).
+
+**Surfaces:** `(manual)` exports `:args` (agents ∧ future
+`malli->json-schema` if MCP demand materializes); `(help)` stays terse —
+two audiences, two texts, one seam, unchanged. Coverage test ≡
+belt-and-suspenders: table-test over `(manual)`, garbage args per command,
+assert `:repl/error` — behavioral, so it enforces regardless of mechanism.
+
+**Rejected en route (2026-08-29, so never re-derived):**
+- *load-time `alter-var-root` guard pass* — source ≠ behavior violates
+  λ coherence; a REPL re-`defn` silently DROPS the guard (dev ≠ prod, the
+  silent-fallback class); a library needing init ceremony before its
+  contract holds poisons the anima path. Its claimed advantage — enforceable
+  coverage — was WRONG: the behavioral table-test enforces either way.
+- *guardrails `>defn`* (escapement's own house style) — a DIFFERENT job:
+  dev-time programmer contract that throws/logs and compiles away in
+  production; it cannot change a return value, so errors-as-data is
+  structurally outside it. Borrowing its gspec syntax with different
+  semantics would be a trap; `defcommand` borrows only the discipline.
+- *explicit-only (no macro)* — survives AS the escape hatch, but alone it
+  can't make schema-less commands unwritable, loses guard-through-REPL-
+  redefinition, and hand-copies the defaulting arity 14×.
+
+Runtime facts pinned: `malli.core` ∧ `malli.error` ∧ `malli.util` ∧
+`malli.instrument` all load under bb (δ'd 2026-08-29); the wrap probe
+(alter-var-root + `:catn` + humanize, bb) worked — rejected on design
+grounds, not mechanism failure.
 
 ## Build ∧ release ∧ CI (modeled on fulcro-rad-datalevin — copy, then adapt)
 

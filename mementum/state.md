@@ -48,9 +48,12 @@ projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
 Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh`
 (committed — build→replace→eval-gate); no daemon. Stale cores refuse.
 
-**Next pickup:** manual-malli-schemas (needs design ratification first) —
-agent-recipe-page DEPRIORITIZED to queue bottom 2026-08-29 (design still
-settling; recipe waits for a stable surface). Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
+**Next pickup:** manual-malli-schemas — design RATIFIED 2026-08-29 @
+architecture.md § D8 (`defcommand`, defn-grammar attr-map; guard/errors pure
+fn ≡ mechanism; :catn; opts derived from config-schema; guardrails rejected →
+memories/guardrails-is-not-a-boundary-guard). Now a BUILD ticket, ~1 session.
+agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
+Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 `/work` — **NOT this repo**. Probing a model through it? Read
 `memories/probe-hygiene-tools-armed` FIRST.
 
