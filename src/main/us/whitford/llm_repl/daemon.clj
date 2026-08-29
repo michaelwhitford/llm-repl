@@ -313,9 +313,13 @@
   "If `:attach` is configured, show the REMOTE (container/host) target and
    whether it's reachable — so `bb status` reflects what `bb llm-repl` would
    actually attach to. Config read lazily (requiring-resolve) so daemon stays a
-   low-level ns with no load-time roster dep. NEVER manages the remote — status
-   only; podman (or whoever) owns the container's lifecycle."
+   low-level ns with no load-time roster dep — and read EXPLICITLY (D10: roster
+   is inert at require; `bb status` is a standalone entrypoint, so it inits the
+   file chain itself). NEVER manages the remote — status only; podman (or
+   whoever) owns the container's lifecycle."
   []
+  ((requiring-resolve 'us.whitford.llm-repl.roster/init!)
+   {:files ((requiring-resolve 'us.whitford.llm-repl.roster/config-sources))})
   (when-let [spec ((requiring-resolve 'us.whitford.llm-repl.roster/attach-spec))]
     (if-let [[host port] (attach-target spec)]
       (println (str "llm-repl remote (:attach) — " host ":" port "  "

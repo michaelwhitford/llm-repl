@@ -363,6 +363,9 @@
    CONTRACT — an explicit request (flag or config) that can't connect FAILS
    LOUD and exits; local is only the DEFAULT, when no attach is requested."
   [& args]
+  ;; D10: ambient config resolution is the STANDALONE entrypoint's job — the
+  ;; library is inert at require; -main's FIRST act reads the file chain.
+  (roster/init! {:files (roster/config-sources)})
   (let [argv         (vec args)
         argset       (set args)
         headless?    (contains? argset "--headless")

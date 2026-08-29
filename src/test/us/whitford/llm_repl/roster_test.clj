@@ -8,6 +8,7 @@
    of roster/config — no test ever reads the machine's real chain."
   (:require
    [clojure.java.io :as io]
+   [clojure.java.shell :as shell]
    [clojure.test :refer [deftest is testing]]
    [us.whitford.llm-repl.roster :as roster]))
 
@@ -124,3 +125,107 @@
       (is (= "λ prompt(x). lambda-notation prompt text"
              (roster/resolve-system-prompt {:model :m}))
           "slurped ∧ trailing-whitespace trimmed"))))
+
+;; ── D10: the source is data, init! is the read, require is inert ────────────
+;; (memories/ambient-config-leaks-into-embedding-hosts — anima, the first
+;; consumer, inherited the operator's :tools true at require)
+
+(defmacro ^:private with-config-state
+  "Save ∧ restore config* around a body that init!s — no D10 test may leak
+   its source into the rest of the suite."
+  [& body]
+  `(let [saved# @roster/config*]
+     (try ~@body (finally (reset! roster/config* saved#)))))
+
+(deftest init-map-folds-over-builtins
+  (with-config-state
+    (roster/init! {:map {:tools true :default-model :gemma-4-31b-it}})
+    (let [cfg (roster/config)]
+      (is (true? (:tools cfg)))
+      (is (= :gemma-4-31b-it (:default-model cfg)) "scalars replace")
+      (is (contains? (:models cfg) :qwen36-35b-a3b)
+          "builtins survive underneath — every source FOLDS, never replaces"))))
+
+(deftest init-files-reads-the-given-chain
+  (let [f (tmp-edn "{:default-model :from-file}")]
+    (with-config-state
+      (roster/init! {:files [f]})
+      (is (= :from-file (:default-model (roster/config)))))))
+
+(deftest init-fn-source-is-live-at-reload
+  (with-config-state
+    (let [n (atom 0)]
+      (roster/init! {:fn (fn [] {:default-model (if (= 1 (swap! n inc))
+                                                  :first-read :second-read)})})
+      (is (= :first-read (:default-model (roster/config))))
+      (roster/reload-config!)
+      (is (= :second-read (:default-model (roster/config)))
+          "{:fn} re-invokes at reload — a host's live source stays live"))))
+
+(deftest init-throws-loud-and-installs-nothing
+  (with-config-state
+    (roster/init! {:map {:tools true}})
+    (let [before @roster/config*]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"config invalid"
+                            (roster/init! {:map {:not-a-real-key 1}}))
+          "invalid merge → the ONE validate-config throws, humanized")
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unknown config source shape"
+                            (roster/init! {:oops 1}))
+          "unknown shape teaches the four")
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"non-map"
+                            (roster/init! {:fn (fn [] 42)}))
+          "a source producing valid-EDN-but-not-a-map is named, not merged")
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"unreadable"
+                            (roster/init! {:files [(tmp-edn "{:a")]}))
+          "an unreadable file throws at init!, on the caller's stack")
+      (is (= before @roster/config*) "a failed init! installs NOTHING"))))
+
+(deftest init-replaces-atomically-and-reports
+  (with-config-state
+    (roster/init! {:builtin true})
+    (let [r (roster/init! {:map {:tools true}})]
+      (is (= {:map {:tools true}} (:source r)))
+      (is (= {:builtin true} (:replaced r))
+          "re-init at any time REPLACES (ratified: no read-tracking) and
+           reports the source it displaced"))))
+
+(deftest reload-refolds-from-current-source-never-the-chain
+  ;; THE leak-hole lock: after a host's init! {:map …}, reload must not
+  ;; resurrect the operator's file chain the host never asked for
+  (let [operator-file (tmp-edn "{:tools true}")]
+    (with-config-state
+      (with-redefs [roster/config-sources (fn [] [operator-file])]
+        (roster/init! {:map {:default-model :host-model}})
+        (roster/reload-config!)
+        (is (nil? (:tools (roster/config)))
+            "the operator's file stayed unread — reload rides the SOURCE")
+        (is (= :host-model (:default-model (roster/config))))))))
+
+(deftest reload-files-rereads-disk
+  (let [f (tmp-edn "{:default-model :v1}")]
+    (with-config-state
+      (roster/init! {:files [f]})
+      (is (= :v1 (:default-model (roster/config))))
+      (spit f "{:default-model :v2}")
+      (roster/reload-config!)
+      (is (= :v2 (:default-model (roster/config)))
+          "{:files} re-reads the captured paths — the operator seam survives"))))
+
+(deftest require-is-inert-the-anima-regression
+  ;; the ticket's raison d'être, probed in a FRESH process: requiring roster
+  ;; with a poison LLM_REPL_CONFIG in the env must neither throw nor read it
+  ;; — builtins govern until init!. Guarded: skips when bb isn't on PATH.
+  (let [poison (tmp-edn "{:tools true :garbage")   ; malformed ON PURPOSE
+        probe  (str "(require '[us.whitford.llm-repl.roster :as r]) "
+                    "(print (pr-str [(= (r/config) r/builtin-defaults) "
+                    "(:source @r/config*)]))")
+        res    (try (shell/sh "bb" "-e" probe
+                              :env (assoc (into {} (System/getenv))
+                                          "LLM_REPL_CONFIG" (.getPath poison)))
+                    (catch java.io.IOException _ nil))]
+    (if res
+      (do (is (zero? (:exit res))
+              (str "require did ambient IO and blew up on the poison: " (:err res)))
+          (is (= "[true {:builtin true}]" (:out res))
+              "fresh process: builtins govern, source untouched, nothing read"))
+      (is true "bb not on PATH — subprocess probe skipped"))))

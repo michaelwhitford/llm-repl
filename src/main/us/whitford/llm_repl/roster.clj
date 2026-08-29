@@ -143,38 +143,110 @@
                             {:file (.getPath file)
                              :extra-forms (vec (rest forms))}))))))))
 
-(defn- config-sources
-  "The file chain, weakest→strongest. XDG-style home path; repo-local
-   config.edn (gitignored); LLM_REPL_CONFIG wins outright when set."
+(defn config-sources
+  "The DEFAULT standalone file chain, weakest→strongest. XDG-style home path;
+   repo-local config.edn (gitignored); LLM_REPL_CONFIG wins outright when set
+   (env read HERE, at chain construction — a reload re-reads the captured
+   files, never the env). Public (D10, stable surface): the standalone
+   entrypoints pass it to `init!`; a host reuses it only DELIBERATELY."
   []
   [(io/file (System/getProperty "user.home") ".config" "llm-repl" "config.edn")
    (io/file "config.edn")
    (some-> (System/getenv "LLM_REPL_CONFIG") io/file)])
 
-(defn load-config
-  "Resolve the effective config: fold the file chain over builtin-defaults,
-   then VALIDATE the merged result (D7 — fails loud with humanized errors;
-   both boot and reload-config! pass through here, so a bad edit can never
-   silently land). Top-level sections that are maps merge per key; scalars
-   replace."
-  []
+(defn- fold-configs
+  "Fold raw config maps (weakest→strongest) over builtin-defaults, then
+   VALIDATE the merged result — THE one path every source shape passes
+   through (D10 ⊕ D7: fails loud with humanized errors, so a bad config can
+   never silently land). Top-level sections that are maps merge per key;
+   scalars replace; nil entries (absent files) are skipped; a non-map entry
+   fails loud naming itself (a file holding `42` is valid EDN — merge-with
+   would only produce a mystery)."
+  [maps]
   (validate-config
-   (reduce (fn [acc f]
-             (if-let [m (some-> f read-edn-file)]
-               (merge-with (fn [a b] (if (and (map? a) (map? b)) (merge a b) b))
-                           acc m)
-               acc))
+   (reduce (fn [acc m]
+             (cond
+               (nil? m) acc
+               (map? m) (merge-with (fn [a b] (if (and (map? a) (map? b)) (merge a b) b))
+                                    acc m)
+               :else    (throw (ex-info (str "llm-repl config source produced a non-map: "
+                                             (pr-str m))
+                                        {:offender m}))))
            builtin-defaults
-           (config-sources))))
+           maps)))
 
-(defonce ^{:doc "The effective config, read once at load. `reload-config!` re-reads
-   the chain (operator seam — edit a file, reload, no restart)."}
+(defn- source->config
+  "A config SOURCE (D10: the source is data) → the effective config value.
+   Shapes:
+     {:builtin true}   — builtin-defaults, nothing else
+     {:map m}          — a literal config map (a host's embedded config)
+     {:fn thunk}       — a thunk producing a map (a host's live source)
+     {:files [paths]}  — the file chain (the standalone shape)
+   Every shape folds over builtin-defaults through fold-configs (ONE
+   validate). Unknown shape fails loud teaching the four."
+  [source]
+  (cond
+    (and (map? source) (:builtin source))
+    (fold-configs [])
+
+    (and (map? source) (contains? source :map))
+    (fold-configs [(:map source)])
+
+    (and (map? source) (contains? source :fn))
+    (let [f (:fn source)]
+      (when-not (ifn? f)
+        (throw (ex-info (str "Config source {:fn …} wants an invokable thunk, got: "
+                             (pr-str f))
+                        {:source source})))
+      (fold-configs [(f)]))
+
+    (and (map? source) (contains? source :files))
+    (fold-configs (map #(some-> % read-edn-file) (:files source)))
+
+    :else
+    (throw (ex-info (str "Unknown config source shape — want {:builtin true} | "
+                         "{:map m} | {:fn thunk} | {:files [paths]}, got: "
+                         (pr-str source))
+                    {:source source}))))
+
+(defn load-config
+  "The effective config the default STANDALONE chain resolves to —
+   `(source->config {:files (config-sources)})`. Kept as the named
+   file-chain reader (tests ∧ REPL inspection); the state-installing read
+   is `init!`."
+  []
+  (source->config {:files (config-sources)}))
+
+(defonce ^{:doc "The effective config ⊕ its SOURCE, one atom (they swap together —
+   a reload can never tear value from provenance). INERT at require (D10):
+   builtin-defaults govern until a host or entrypoint calls `init!`; no
+   file, env, or home-dir read ever fires at load."}
   config*
-  (atom (load-config)))
+  (atom {:source {:builtin true} :value builtin-defaults}))
 
-(defn reload-config! [] (reset! config* (load-config)))
+(defn init!
+  "THE config read (D10, stable surface): resolve `source` (see
+   source->config for the four shapes), fold over builtin-defaults,
+   validate, install atomically. Called for effect ⇒ THROWS loud on the
+   caller's stack (D9) — bad shape, unreadable file, invalid merge — and
+   installs NOTHING on failure. Re-init at any time REPLACES (ratified: no
+   read-tracking; already-open sessions keep their materialized configs —
+   the stickiness law). Returns {:source s :replaced old-source}."
+  [source]
+  (let [value   (source->config source)
+        [old _] (swap-vals! config* (constantly {:source source :value value}))]
+    {:source source :replaced (:source old)}))
 
-(defn config [] @config*)
+(defn reload-config!
+  "Re-fold the effective config from the CURRENT source (D10 — a reload can
+   never resurrect a chain the host's init! replaced). {:files} re-reads
+   the captured paths; {:fn} re-invokes; {:map} ∧ {:builtin} are harmless
+   no-ops. The operator seam: edit a file, reload over the wire, no
+   restart, tapes intact."
+  []
+  (init! (:source @config*)))
+
+(defn config [] (:value @config*))
 
 (defn default-model
   "The model an unqualified (open!) session runs — config :default-model."
