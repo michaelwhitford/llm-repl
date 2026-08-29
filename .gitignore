@@ -4,6 +4,7 @@
 target/
 .clj-kondo/*
 !.clj-kondo/config.edn
+!.clj-kondo/hooks/
 .lsp/
 .calva/
 /config.edn
