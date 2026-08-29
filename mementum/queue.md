@@ -1,11 +1,11 @@
 # new
 
 ⚪ manual-malli-schemas — REMAINDER of formal-config-malli (the config half ✅ landed with refactor step 7 @f9fc63e: schema, EOF-assert, prompt stack): ^:manual commands carry malli schemas → humanized errors-as-data teach the model (λ mirror) ⊕ tool defs via malli->json-schema if MCP demand ever materializes. malli on classpath, bb-verified. · needs design ratification · 1-2 sessions
-⚪ agent-recipe-page — "driving llm-repl from any agent": connect (bencode/bb one-liner), eval commands, poll events (D3 long-poll). Replaces the MCP facade with documentation — the manual seam feeds a recipe instead of a component. · knowledge/design/architecture.md § placeholders · ~half session
 ⚪ bbin-entry — `:bbin/bin` → `llm-repl` on PATH. DEFERRED until feedback says people actually want to install it. · ~30 min
 ⚪ split-pane-tape-view — watch a second session live (right pane splits). Rides tui.frame purity post-refactor. · knowledge/tui-design-rules.md · 1 session
 ⚪ compare-pane — ab! children side-by-side with config deltas; rides the SAME overlay slot as help. · knowledge/tui-design-rules.md · 1 session
 ⚪ bb-status-all — machine-wide daemon list (~/.local/state index keyed by project) if the per-project view proves insufficient. · ~1 session
+⚪ agent-recipe-page — "driving llm-repl from any agent": connect (bencode/bb one-liner), eval commands, poll events (D3 long-poll). Replaces the MCP facade with documentation — the manual seam feeds a recipe instead of a component. DEPRIORITIZED 2026-08-29: still working through the new design; recipe waits until the surface settles. · knowledge/design/architecture.md § placeholders · ~half session
 
 # complete
 

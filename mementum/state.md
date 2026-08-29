@@ -48,9 +48,9 @@ projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
 Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh`
 (committed — build→replace→eval-gate); no daemon. Stale cores refuse.
 
-**Next pickup:** agent-recipe-page (~half session, agent-ready) — the
-manual seam feeds a recipe, not a component (mcp-facade verdict).
-Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
+**Next pickup:** manual-malli-schemas (needs design ratification first) —
+agent-recipe-page DEPRIORITIZED to queue bottom 2026-08-29 (design still
+settling; recipe waits for a stable surface). Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 `/work` — **NOT this repo**. Probing a model through it? Read
 `memories/probe-hygiene-tools-armed` FIRST.
 
@@ -77,4 +77,4 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Front:
-agent-recipe-page → manual-malli-schemas → split-pane-tape-view.
+manual-malli-schemas → split-pane-tape-view → compare-pane.
