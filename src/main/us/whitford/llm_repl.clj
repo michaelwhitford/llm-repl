@@ -272,6 +272,65 @@
                    "    " summary)))
        (str/join "\n")))
 
+(def unsettable-keys
+  "What `unset!` may remove: the caller-settable knobs (`config-keys`) ⊕
+   `:orientation` (settable only via config files today, but a session-level
+   override is legal on the D7 chain and thus unsettable). The D8 schema
+   will teach the model this set; until then the error message does."
+  (conj config-keys :orientation))
+
+(def ^:private chain-resumed-keys
+  "The prompt-stack keys: session absence ≡ the D7 request-time chain
+   (model > provider > root) takes over — for these, unset ≡ plain dissoc."
+  #{:system :preamble :orientation})
+
+(defn ^{:manual "Remove session config overrides so defaults/prompt chain resume."} unset!
+  "Remove config override(s) `ks` from the session at `slug` — the STICKY
+   config's explicit release valve (D7 amendment, 2026-08-29: `open!` merges
+   and never removes, so a poison override used to outlive everything short
+   of `drop!`). NOT nil-assignment: present-nil keeps its D7 meaning
+   (explicitly none — STOPS the prompt chain); unset RESUMES it. Per-key
+   semantics (ratified): prompt-stack keys (:system :preamble :orientation)
+   are DISSOC'd — the request-time chain takes over; the default-seeded
+   knobs (:model :preamble? :thinking :temperature :tools) RE-SEED from the
+   live `(default-config)` — bare dissoc would mint new poison (:model
+   absent ≡ a broken send; :tools absent ≡ none, not default). One mental
+   model: whatever would govern a FRESH session governs again.
+
+   Returns data, never throws (λ api): {:repl/id :repl/unset :repl/config}
+   — :repl/config shows what now governs the named keys (absent ≡ the chain
+   decides at request time). Unknown key ∨ missing session → {:repl/error}."
+  [slug & ks]
+  (let [ks (vec ks)]
+    (cond
+      (empty? ks)
+      {:repl/id slug
+       :repl/error (str "unset! needs at least one key — unsettable: " (pr-str unsettable-keys))}
+
+      (seq (remove (set unsettable-keys) ks))
+      {:repl/id slug
+       :repl/error (str "unknown config key(s) " (pr-str (vec (remove (set unsettable-keys) ks)))
+                        " — unsettable: " (pr-str unsettable-keys))}
+
+      :else
+      (let [defaults  (default-config) ; live read, OUTSIDE the swap fn (pure f)
+            release   (fn [config k]
+                        (if (chain-resumed-keys k)
+                          (dissoc config k)
+                          (assoc config k (get defaults k))))
+            [old new] (registry/mutate!
+                       (fn [reg]
+                         (if (contains? reg slug)
+                           (update-in reg [slug :config] #(reduce release % ks))
+                           reg)))]
+        (if-not (contains? old slug)
+          {:repl/id slug :repl/error (str "no such repl session: " slug)}
+          (do
+            (event! {:kind :unset! :slug slug :msg (str/join " " (map str ks))})
+            {:repl/id     slug
+             :repl/unset  ks
+             :repl/config (select-keys (get-in new [slug :config]) ks)}))))))
+
 (defn ^{:manual "Delete a session."} drop!
   "Discard the session at `slug` (mutate!-only, D2). Returns true when one
    existed (detected from `old`, the pre-mutation snapshot)."

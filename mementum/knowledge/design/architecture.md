@@ -283,6 +283,14 @@ Amendments from the 2026-08-27 container session:
   attempt short of `drop!` (sledgehammer for a thumbtack), and the
   un-sticking knowledge exists nowhere on the surface — `unset!` in
   `(help)` fixes both.
+  RATIFIED (2026-08-29, build session): "chain resumes" is per-key-class —
+  the prompt-stack keys (`:system :preamble :orientation`) DISSOC (the D7
+  request-time chain takes over), while the five default-SEEDED knobs
+  (`:model :preamble? :thinking :temperature :tools`, materialized into
+  session :config at creation) RE-SEED from the live `(default-config)` —
+  bare dissoc there would mint new poison (`:model` absent ≡ NPE at the
+  next send; `:tools` absent ≡ none, not default). One mental model either
+  way: whatever would govern a FRESH session governs again.
 
 ### D8 — `defcommand`: the manual field grows schemas (ratified 2026-08-29)
 

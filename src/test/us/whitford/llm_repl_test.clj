@@ -448,6 +448,56 @@
     (testing "drop! → tombstone (recovery must not resurrect it)"
       (is (:trace/dropped (read-blob store "nodes/s/1/tape.edn"))))))
 
+;; ── unset! — the sticky config's release valve (D7 amendment) ─────────────
+
+(deftest unset!-seeded-knobs-reseed-test
+  (testing "unsetting a default-seeded knob RE-SEEDS from the live
+            (default-config) — bare dissoc would mint new poison (:model
+            absent ≡ broken send; :tools absent ≡ none, not default)"
+    (repl/open! :u {:tools [:clojure/eval] :temperature 0.9 :model :poison/model})
+    (let [r (repl/unset! :u :tools :temperature :model)
+          d (repl/default-config)
+          c (:config (repl/snapshot :u))]
+      (is (= [:tools :temperature :model] (:repl/unset r)))
+      (is (= (:tools d) (:tools c)) "config default governs again")
+      (is (= (:temperature d) (:temperature c)))
+      (is (= (:model d) (:model c)) "the poison model override is gone")
+      (is (contains? c :model) "seeded keys stay PRESENT — never dissoc'd"))))
+
+(deftest unset!-prompt-keys-dissoc-test
+  (testing "unsetting a prompt-stack key DISSOCs — the D7 request-time chain
+            resumes (session > model > provider > root)"
+    (repl/open! :u {:system "custom voice" :preamble false})
+    (repl/unset! :u :system :preamble)
+    (let [c (:config (repl/snapshot :u))]
+      (is (not (contains? c :system)))
+      (is (not (contains? c :preamble)))))
+  (testing "present-nil is NOT unset — the two semantics are OPPOSITES (nil
+            STOPS the chain ≡ explicitly none; unset RESUMES it)"
+    (repl/open! :u2 {:system nil})
+    (is (contains? (:config (repl/snapshot :u2)) :system)
+        "open! preserved the explicit none; only unset! removes it")))
+
+(deftest unset!-errors-as-data-test
+  (testing "commands return errors as DATA — the return is read (D9 idiom)"
+    (repl/open! :u {})
+    (is (str/includes? (:repl/error (repl/unset! :u :bogus)) "unknown config key")
+        "unknown key names itself")
+    (is (str/includes? (:repl/error (repl/unset! :u :bogus)) ":orientation")
+        "…and teaches the unsettable set")
+    (is (str/includes? (:repl/error (repl/unset! :u)) "at least one key"))
+    (is (= "no such repl session: :ghost" (:repl/error (repl/unset! :ghost :tools))))))
+
+(deftest unset!-receipt-and-idempotence-test
+  (testing "one loud receipt per unset!; unsetting an already-default key is
+            harmless (still receipted — the caller asked, the caller hears)"
+    (repl/open! :u {})
+    (repl/unset! :u :temperature)
+    (repl/unset! :u :temperature)
+    (is (= 2 (count (filter #(= :unset! (:kind %)) @registry/events*))))
+    (is (= (:temperature (repl/default-config))
+           (:temperature (:config (repl/snapshot :u)))))))
+
 ;; ── register-manual-ns! — guarded (D9 registration-guards) ────────────────
 
 (deftest register-manual-ns!-guards-test
