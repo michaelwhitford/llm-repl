@@ -370,6 +370,30 @@ Runtime facts pinned: `malli.core` ∧ `malli.error` ∧ `malli.util` ∧
 (alter-var-root + `:catn` + humanize, bb) worked — rejected on design
 grounds, not mechanism failure.
 
+**AMENDED (2026-08-29, ratified pre-build — two gaps the ratified text
+left open, found by assessing against the real command surface):**
+
+1. **Generated arities take EXPLICIT `:defaults`.** The commands disagree
+   about what an omitted tail arg means (8 commands default opts to `{}`;
+   `compact!` defaults `floor` to `tape/default-floor`), so the attr-map
+   grows a `:defaults` map — `{:defaults {opts {}}}` — REQUIRED for every
+   `[:? …]` param in `:args`. No implicit `{}` convention: a missing
+   default is a COMPILE-time error (unwritable > forbidden, the same law
+   as `:args` itself). Variadic commands (`unset!` `[slug & ks]`) have no
+   optional tail — no generated arity; the guard validates the flat arg
+   list against a `[:* …]`/`[:+ …]` schema.
+2. **`roster/session-opts-schema` is the ONE session-knob source.** The
+   ratified "opts derived from `roster/config-schema` via select-keys"
+   cannot be literal — the session keys (`:model :system :preamble?
+   :thinking :temperature`) don't exist at config-schema's root (it has
+   `:models`, `:system-prompt`, no temperature). Instead roster grows a
+   closed `session-opts-schema` over the session config keys; the entries
+   the config file SHARES (`tools`, the prompt-value shape) are derived
+   from / reference `config-schema`'s definitions so those stay one
+   source; session-only keys are defined beside them. Commands extend
+   per-command (`:complete-fn` `:xform` `:at`) via `malli.util` in their
+   own `:args`.
+
 ### D9 — seam strictness: the boundary-idiom rule (ratified 2026-08-29)
 
 From the state audit (knowledge/state-audit.md). The rule that decides
@@ -481,6 +505,38 @@ all; a host using the default provider requires `.roster` honestly.
 **Named, not proposed:** full hermeticity (config as a system VALUE
 threaded through calls, no globals) — v2 shape, does not conflict with
 this design; the source-as-data atom is the stepping stone.
+
+### D11 — session config keys are fully qualified (ratified 2026-08-29)
+
+`:model :system :preamble :preamble? :thinking :temperature :tools`
+(⊕ `:orientation` as a session-level key) become
+**`:us.whitford.llm-repl/model`** etc. — full namespace, not a short one.
+
+**Rationale (the map that ESCAPES):** collision requires a map merging
+keys from multiple owners. `snapshot` exports the session `:config` into
+HOST space — once inside a host's maps, a bare `:model` can silently
+collide with the host's own `:model`. A fully-qualified key cannot
+collide with ANY keyword, anywhere, forever; a short namespace
+(`:llm-repl/…`) only shrinks the odds. Alpha is the only cheap time;
+anima re-migrates (the ratified step-function: migrate → suggest →
+ingest → re-migrate).
+
+**Scope — qualified ≡ the PERSISTED session-config keys only:**
+- The config FILE root stays bare — path-owned, closed schema, `:ext` for
+  hosts; no second owner in the map.
+- `:repl/*` results, `registry/index` projection keys, tape message keys
+  (`:role :text`), `:model/*` `:provider/*` descriptors — UNCHANGED for
+  now (deferred, human-ruled; results/views are a different family).
+- Ephemeral opts-only keys (`:complete-fn` `:xform` `:at`) stay bare —
+  consumed immediately at the call, never persisted, never escape;
+  `:complete-fn` is contract-§ 3 lineage.
+
+**Mechanics:** lower layers (completion, registry) write the full literal
+keyword — a qualified keyword is just a name, no require, no layer
+violation. The api ns spells them `::model` (its own ns). Hosts and the
+model write `::repl/model` behind `(require … :as repl)` — the
+orientation prompt already establishes the alias. D8 schemas are born
+against the qualified keys — one migration, not two.
 
 ## Build ∧ release ∧ CI (modeled on fulcro-rad-datalevin — copy, then adapt)
 

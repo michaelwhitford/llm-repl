@@ -27,7 +27,10 @@ us.whitford/llm-repl {:mvn/version "…"}
 
 ### 1. The api ns — `us.whitford.llm-repl`
 
-Every `^:manual` command, with v0.2.0 semantics preserved:
+Every `^:manual` command, with v0.2.0 semantics preserved — EXCEPT the
+session config keys, which v0.3.0 renames to fully-qualified spellings
+(D11, the ratified alpha-window break; anima re-migrates — the
+step-function: migrate → suggest → ingest → re-migrate):
 
 ```
 open! eval! fork! ab! bounce! trampoline! run-battery! compact!
@@ -102,12 +105,28 @@ SURFACE's job; the data shape is the contract.
 
 ### 6. Config semantics
 
-Session config keys `[:model :system :preamble :preamble? :thinking
-:temperature :tools]`, persisted at open/eval/fork; preamble resolution
-chain session > model > provider > config-root (absent ≡ inherit,
-false/blank ≡ explicitly none). A host embedding the library may bypass
-roster entirely via `:complete-fn`; roster is the DEFAULT provider, not a
-required path.
+Session config keys are FULLY QUALIFIED (D11 — the session `:config` map
+escapes into host space via `snapshot`, so its keys must be collision-proof
+against ANY keyword):
+
+```clojure
+:us.whitford.llm-repl/model        ;; ≡ ::repl/model behind the alias
+:us.whitford.llm-repl/system
+:us.whitford.llm-repl/preamble
+:us.whitford.llm-repl/preamble?
+:us.whitford.llm-repl/thinking
+:us.whitford.llm-repl/temperature
+:us.whitford.llm-repl/tools
+:us.whitford.llm-repl/orientation  ;; session-level chain override
+```
+
+Persisted at open/eval/fork; preamble resolution chain session > model >
+provider > config-root (absent ≡ inherit, false/blank ≡ explicitly none).
+Ephemeral opts-only keys stay BARE (`:complete-fn` `:xform` `:at` —
+consumed at the call, never persisted). The config FILE root stays bare
+(path-owned, closed schema, `:ext`). A host embedding the library may
+bypass roster entirely via `:complete-fn`; roster is the DEFAULT provider,
+not a required path.
 
 **Inert at require (D10, ratified 2026-08-29):** requiring any library ns
 does NO ambient IO — no file chain, no env, no home dir. Until a host
