@@ -215,8 +215,23 @@
   (atom '[us.whitford.llm-repl]))
 
 (defn register-manual-ns!
-  "Add `ns-sym` to the manual's compile set (idempotent)."
+  "Add `ns-sym` to the manual's compile set (idempotent). GUARDED (D9,
+   registration-guards): the ns must be a symbol naming a LOADED namespace
+   (`find-ns`) — this call's return is read by nobody, so a typo'd ns-sym
+   would otherwise 'succeed' quietly and break `(help)`/`(manual)` for EVERY
+   caller later, far from the cause (`ns-publics` on nil throws there, not
+   here). Throws teaching ex-message ⊕ {:errors …} ex-data."
   [ns-sym]
+  (when-not (symbol? ns-sym)
+    (throw (ex-info (str "llm-repl: cannot register manual namespace — expected "
+                         "a symbol naming a loaded namespace, got " (pr-str ns-sym))
+                    {:errors {:ns ns-sym :symbol? false}})))
+  (when-not (find-ns ns-sym)
+    (throw (ex-info (str "llm-repl: cannot register manual namespace " ns-sym
+                         " — no such LOADED namespace (require it first, and "
+                         "check for a typo; registering it unloaded would "
+                         "break (help) for every caller later)")
+                    {:errors {:ns ns-sym :loaded? false}})))
   (swap! manual-namespaces* #(vec (distinct (conj % ns-sym)))))
 
 (defn ^{:manual "The command manual as data — for agents and tools."} manual

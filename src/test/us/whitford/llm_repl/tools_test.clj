@@ -77,3 +77,52 @@
   (testing "the registered :clojure/eval tool rides the same executor"
     (is (= {:result "=> 2" :is-error false}
            (tp/dispatch tools/tool-registry* :clojure/eval {:code "(+ 1 1)"})))))
+
+;; ── register-tool! — the guarded chokepoint (D9 registration-guards) ──────
+;; Every throw ≡ teaching ex-message ⊕ {:errors …} ex-data; tests run against
+;; FRESH registries so the real tool-registry* is never touched.
+
+(defrecord GuardTestTool [nm schema]
+  tp/Tool
+  (tool-name [_] nm)
+  (description [_] "guard-test")
+  (input-schema [_] schema)
+  (invoke [_ _] :ok))
+
+(deftest register-tool!-guards
+  (testing "not a Tool → throws teaching text (nothing else is even callable)"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"does not satisfy"
+                          (tools/register-tool! (tp/new-registry []) 42))))
+  (testing "non-keyword tool-name → throws (the registry ∧ config :tools key)"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"must be a keyword"
+                          (tools/register-tool! (tp/new-registry [])
+                                                (->GuardTestTool "strname" [:map])))))
+  (testing "invalid malli input-schema → throws at REGISTRATION, not on the
+            model's turn (dispatch validates every call against it)"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not a valid malli schema"
+                          (tools/register-tool! (tp/new-registry [])
+                                                (->GuardTestTool :t/bad [:mapp [:x :string]]))))
+    (try (tools/register-tool! (tp/new-registry [])
+                               (->GuardTestTool :t/bad [:mapp [:x :string]]))
+         (catch clojure.lang.ExceptionInfo e
+           (is (= :t/bad (get-in (ex-data e) [:errors :tool-name]))))))
+  (testing "a valid tool registers and is dispatchable (upstream contract:
+            returns the tool)"
+    (let [reg (tp/new-registry [])
+          t   (->GuardTestTool :t/ok [:map {:closed true} [:x :string]])]
+      (is (= t (tools/register-tool! reg t)))
+      (is (some? (tp/lookup reg :t/ok)))))
+  (testing "re-registering an = tool is a NO-OP (reload idempotence)"
+    (let [reg (tp/new-registry [])]
+      (tools/register-tool! reg (->GuardTestTool :t/same [:map]))
+      (is (= (->GuardTestTool :t/same [:map])
+             (tools/register-tool! reg (->GuardTestTool :t/same [:map]))))))
+  (testing "a DIFFERENT tool under a taken name → collision throw — silent
+            replacement of a live tool is the failure the guard exists for"
+    (let [reg (tp/new-registry [])]
+      (tools/register-tool! reg (->GuardTestTool :t/clash [:map]))
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"already registered"
+                            (tools/register-tool! reg (->GuardTestTool :t/clash [:map [:y :int]]))))
+      (try (tools/register-tool! reg (->GuardTestTool :t/clash [:map [:y :int]]))
+           (catch clojure.lang.ExceptionInfo e
+             (is (true? (get-in (ex-data e) [:errors :collision]))))))))

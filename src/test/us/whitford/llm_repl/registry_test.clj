@@ -206,6 +206,22 @@
     (is (= [] r))
     (is (< (- (System/currentTimeMillis) t0) 2000) "returns promptly, not after some huge default")))
 
+;; ── event! EDN assert (D9 registration-guards — sessions*'s twin) ─────────
+
+(deftest event!-edn-assert-test
+  (testing "a non-EDN event (fn/atom/record) → loud throw BEFORE it enters
+            the ring — events* is serialized over nREPL to every attached
+            client; the asymmetry with sessions* was audit §5's finding"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"non-EDN"
+                          (registry/event! {:kind :x :msg "m" :payload (atom 1)})))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (registry/event! {:kind :x :cb (fn [] 1)})))
+    (is (= [] @registry/events*) "the ring stayed clean — validated pre-append")
+    (is (= 0 @registry/version*) "no version bump on a rejected event"))
+  (testing "the two legitimate shapes still flow: plain string ∧ EDN map"
+    (is (= :note (:kind (registry/event! "plain"))))
+    (is (some? (:id (registry/event! {:kind :eval! :slug :s :msg "✓@1"}))))))
+
 ;; ── injected taps — D9 disarm-on-throw (tap-failure-receipts) ─────────────
 ;; architecture.md § D9: a tap that throws is DISARMED (slot reset! nil
 ;; FIRST — recursion-safe by construction, this test suite completing IS the

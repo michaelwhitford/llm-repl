@@ -447,3 +447,30 @@
     (repl/drop! :s)
     (testing "drop! → tombstone (recovery must not resurrect it)"
       (is (:trace/dropped (read-blob store "nodes/s/1/tape.edn"))))))
+
+;; ── register-manual-ns! — guarded (D9 registration-guards) ────────────────
+
+(deftest register-manual-ns!-guards-test
+  (testing "a typo'd/unloaded ns → loud throw naming it — the silent version
+            'succeeded' quietly and broke (help)/(manual) for EVERY caller
+            later, far from the cause (ns-publics on nil)"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"no such LOADED"
+                          (repl/register-manual-ns! 'no.such.namespace-typo)))
+    (try (repl/register-manual-ns! 'no.such.namespace-typo)
+         (catch clojure.lang.ExceptionInfo e
+           (is (= {:ns 'no.such.namespace-typo :loaded? false} (:errors (ex-data e))))))
+    (is (not-any? #{'no.such.namespace-typo} @repl/manual-namespaces*)
+        "nothing landed in the compile set"))
+  (testing "a non-symbol → loud throw (find-ns would ClassCastException
+            confusingly; this names the contract instead)"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"expected\s+.*a symbol"
+                          (repl/register-manual-ns! "a-string"))))
+  (testing "a loaded ns registers, idempotently — (manual) still compiles"
+    (let [before @repl/manual-namespaces*]
+      (try
+        (repl/register-manual-ns! 'us.whitford.llm-repl.tape)
+        (repl/register-manual-ns! 'us.whitford.llm-repl.tape)
+        (is (= 1 (count (filter #{'us.whitford.llm-repl.tape}
+                                @repl/manual-namespaces*))))
+        (is (vector? (repl/manual)) "the manual still compiles")
+        (finally (reset! repl/manual-namespaces* before))))))

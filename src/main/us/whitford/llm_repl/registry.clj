@@ -243,6 +243,8 @@
 
 ;; ── events ────────────────────────────────────────────────────────────────
 
+(declare event!*)
+
 (defn event!
   "Append one event to `events*` (bounded ring, last 200) and bump `version*`.
    `e` ≡ {:kind kw :slug kw-optional :msg str}, or a plain STRING (D3
@@ -251,10 +253,28 @@
    `event!` calls with plain strings, e.g. main.clj's `(core/event! \"use! :x\")`,
    keep working through this coercion). Assigns a monotonic `:id` and `:at`
    (epoch ms); returns the COMPLETED event map (never the bare string, even
-   when `e` was one — callers that need the rendered line want `event-line`)."
+   when `e` was one — callers that need the rendered line want `event-line`).
+
+   EDN-asserted like its sibling `sessions*` (D9, registration-guards —
+   audit §5 flagged the asymmetry): a fn/atom/record in an event would break
+   the next remote events fetch silently. Unlike `mutate!` (whose f is
+   opaque, so the assert can only fire after the swap), `e` is a VALUE —
+   validated BEFORE it enters the ring, which stays clean."
   [e]
-  (let [e  (if (string? e) {:kind :note :msg e} e)
-        id (swap! event-id* inc)
+  (let [e (if (string? e) {:kind :note :msg e} e)]
+    (when-let [violations (edn-violations e)]
+      (throw (ex-info (str "event! given non-EDN event data — events* must stay "
+                           "pure data (no fn/atom/record, ever; it is serialized "
+                           "over nREPL to every attached client): "
+                           (pr-str violations))
+                      {:violations violations})))
+    (event!* e)))
+
+(defn- event!*
+  "The unguarded tail of `event!` — id/at assignment, ring append, version
+   bump, tap. Split out only so the assert above reads as the gate it is."
+  [e]
+  (let [id (swap! event-id* inc)
         e' (assoc e :id id :at (System/currentTimeMillis))]
     (swap! events* #(vec (take-last 200 (conj % e'))))
     (swap! version* inc)

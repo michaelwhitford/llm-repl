@@ -34,7 +34,8 @@
    core-free the same way tui does (the wire layer composes them)."
   (:require
    [clojure.string :as str]
-   [escapement.tools.protocol :as tp]))
+   [escapement.tools.protocol :as tp]
+   [malli.core :as m]))
 
 (def default-timeout-ms
   "How long one eval may run before the tool answers :timeout as data.
@@ -137,9 +138,64 @@
 
 (defonce ^{:doc "The tool registry — an OPEN SLOT (λ extend), twin of core's
    `manual-namespaces*`: seeded with :clojure/eval; a host registers more via
-   `escapement.tools.protocol/register!` (anima would register its granted
-   app-query here). Sessions pick FROM it by keyword (config :tools) — what
-   is not registered is unreachable, not forbidden. defonce so a reload
-   keeps host-registered tools."}
+   `register-tool!` below (the GUARDED chokepoint — anima would register its
+   granted app-query there). Sessions pick FROM it by keyword (config :tools)
+   — what is not registered is unreachable, not forbidden. defonce so a
+   reload keeps host-registered tools."}
   tool-registry*
   (tp/new-registry [(clojure-eval-tool)]))
+
+(defn register-tool!
+  "THE guarded registration chokepoint for the tool wire (D9,
+   registration-guards — architecture.md § D9): validates BEFORE a tool can
+   land on the model's wire, because this call's return is read by NOBODY —
+   errors-as-data here would be a silent fallback that breaks the tool wire
+   far from the cause. Throws are safe for every audience: a self-registering
+   model reads the teaching ex-MESSAGE as its :is-error tool result
+   (tools dispatch converts, test-locked upstream); a host boots loudly; an
+   editor prints it (that's what a repl is).
+
+   Guards, in order:
+   - `tool` satisfies `tp/Tool` (else nothing below is even callable)
+   - `(tp/tool-name tool)` is a keyword (the registry ∧ config :tools key)
+   - `(tp/input-schema tool)` compiles as a malli schema (else dispatch's
+     validation gate would blow up at CALL time, on the model's turn)
+   - no COLLISION: a name already registered throws — silently REPLACING
+     a live tool (upstream `tp/register!`'s behavior) is the failure this
+     guard exists for. Re-registering an `=` tool is a no-op (reload
+     idempotence); replacing on purpose is `tp/register!` directly — the
+     labeled escape hatch.
+
+   ex-message ≡ teaching text; ex-data ≡ {:errors …}. Returns the tool
+   (upstream's contract). 1-arity registers into `tool-registry*`."
+  ([tool] (register-tool! tool-registry* tool))
+  ([registry tool]
+   (letfn [(fail! [msg errors]
+             (throw (ex-info (str "llm-repl: cannot register tool — " msg)
+                             {:errors errors})))]
+     (when-not (satisfies? tp/Tool tool)
+       (fail! (str (pr-str tool) " does not satisfy escapement.tools.protocol/Tool "
+                   "(implement tool-name, description, input-schema, invoke)")
+              {:not-a-tool (pr-str tool)}))
+     (let [nm (tp/tool-name tool)]
+       (when-not (keyword? nm)
+         (fail! (str "tool-name must be a keyword (the registry key ∧ what a "
+                     "session's config :tools selects by), got " (pr-str nm))
+                {:tool-name nm}))
+       (try (m/schema (tp/input-schema tool))
+            (catch Exception e
+              (fail! (str "input-schema of " nm " is not a valid malli schema ("
+                          (ex-message e) ") — dispatch validates every call "
+                          "against it, so it must compile at registration, "
+                          "not blow up on the model's turn")
+                     {:tool-name nm :schema-error (ex-message e)})))
+       (let [existing (tp/lookup registry nm)]
+         (cond
+           (nil? existing)     (tp/register! registry tool)
+           (= existing tool)   tool ; reload idempotence — same tool, no-op
+           :else
+           (fail! (str nm " is already registered with a DIFFERENT tool — "
+                       "silent replacement is the failure this guard exists "
+                       "for; pick another name, or replace deliberately via "
+                       "escapement.tools.protocol/register!")
+                  {:tool-name nm :collision true})))))))
