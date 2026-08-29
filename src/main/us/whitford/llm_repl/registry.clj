@@ -71,10 +71,15 @@
 ;; The registry stays io-free: these are OPEN SLOTS (absent(default) ∧
 ;; present(compose)), nil until a host injects — `trace/init!` at daemon
 ;; boot sets both, `trace/close!` retracts. A library consumer that never
-;; inits pays nothing. Tap calls are try/catch-guarded at the call site: an
-;; injected fn must never break the event/mutation path (the tap owns its
-;; own loudness — trace's fns emit receipts on failure by contract; the
-;; guard here is the belt for the injection seam itself).
+;; inits pays nothing. An injected fn must never break the event/mutation
+;; path, but its failure must never be SILENT either (D9,
+;; architecture.md § D9): a tap that throws is DISARMED — slot reset! nil
+;; FIRST, then ONE loud receipt naming what stopped (`run-tap!` below).
+;; A throw reaching this boundary means the tap FN itself is broken —
+;; trace catches its own disk errors internally and receipts them, so
+;; catch-and-continue here would be receipt spam over flickering
+;; half-durability, and catch-and-nil (the pre-D9 code) was S3* failing
+;; silently (knowledge/state-audit.md §1).
 
 (defonce ^{:doc "Injected observer of every completed event map (called with
    the event AFTER :id/:at assignment) — the transcript-JSONL emission slot.
@@ -88,6 +93,29 @@
    nil ≡ no observer."}
   mutate-tap*
   (atom nil))
+
+(declare event!)
+
+(defn- run-tap!
+  "Run the injected tap in `slot` (when armed) via `invoke` (a fn of the tap,
+   so each call site passes its own args). Guards the injection seam per D9
+   (tap-failure-receipts): on throw, DISARM — `reset!` the slot nil FIRST,
+   which makes the receipt recursion-safe by construction (the tap is gone
+   before `event!` below could re-enter it) — then emit ONE loud receipt
+   naming which tap stopped and why. `slot-name` ≡ the human name in that
+   receipt (\"event-tap\" / \"mutate-tap\")."
+  [slot slot-name invoke]
+  (when-let [tap @slot]
+    (try
+      (invoke tap)
+      (catch Throwable t
+        (reset! slot nil)
+        (event! {:kind :tap-disarmed
+                 :msg  (str slot-name " threw "
+                            (.getName ^Class (class t))
+                            (when-let [m (ex-message t)] (str ": " m))
+                            " — DISARMED; its observations stop here"
+                            " (re-inject, e.g. trace/init!, to resume)")})))))
 
 ;; ── EDN assert ────────────────────────────────────────────────────────────
 
@@ -161,8 +189,7 @@
                             "ever): " (pr-str violations))
                        {:violations violations})))
     (swap! version* inc)
-    (when-let [tap @mutate-tap*]
-      (try (tap old new) (catch Throwable _ nil)))
+    (run-tap! mutate-tap* "mutate-tap" (fn [tap] (tap old new)))
     [old new]))
 
 ;; ── projections (the wire's payload shapes) ───────────────────────────────
@@ -231,8 +258,7 @@
         e' (assoc e :id id :at (System/currentTimeMillis))]
     (swap! events* #(vec (take-last 200 (conj % e'))))
     (swap! version* inc)
-    (when-let [tap @event-tap*]
-      (try (tap e') (catch Throwable _ nil)))
+    (run-tap! event-tap* "event-tap" (fn [tap] (tap e')))
     e'))
 
 (defn event-line

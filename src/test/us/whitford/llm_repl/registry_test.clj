@@ -16,6 +16,8 @@
   (reset! registry/sessions* {})
   (registry/reset-events!)
   (reset! registry/version* 0)
+  (reset! registry/event-tap* nil)
+  (reset! registry/mutate-tap* nil)
   (f))
 
 (use-fixtures :each reset-registry-fixture)
@@ -203,3 +205,60 @@
         r     (registry/wait-for-event! start 50)]
     (is (= [] r))
     (is (< (- (System/currentTimeMillis) t0) 2000) "returns promptly, not after some huge default")))
+
+;; ── injected taps — D9 disarm-on-throw (tap-failure-receipts) ─────────────
+;; architecture.md § D9: a tap that throws is DISARMED (slot reset! nil
+;; FIRST — recursion-safe by construction, this test suite completing IS the
+;; recursion proof) ⊕ ONE loud :tap-disarmed receipt. Never silent
+;; (the pre-D9 `(catch Throwable _ nil)` was S3* failing silently —
+;; knowledge/state-audit.md §1), never spam (one failure ≡ one receipt).
+
+(deftest event-tap-throw-disarms-and-receipts-test
+  (testing "a throwing event-tap → slot nil ⊕ exactly ONE :tap-disarmed
+            receipt naming the tap ∧ the throw; the original event still
+            lands FIRST (its append precedes the tap call), and event!
+            returns it despite the throw"
+    (reset! registry/event-tap* (fn [_] (throw (ex-info "boom" {}))))
+    (let [e (registry/event! {:kind :eval! :slug :s :msg "hi"})]
+      (is (= :eval! (:kind e)) "event! returns the completed event map"))
+    (is (nil? @registry/event-tap*) "slot disarmed")
+    (let [evs @registry/events*]
+      (is (= [:eval! :tap-disarmed] (mapv :kind evs)) "original first, receipt second")
+      (is (re-find #"event-tap threw .*boom" (:msg (peek evs)))
+          "receipt names which tap ∧ what killed it"))))
+
+(deftest tap-disarm-receipt-fires-once-test
+  (testing "after disarm, later event! calls are tap-free — one failure ≡
+            one receipt, never receipt spam"
+    (reset! registry/event-tap* (fn [_] (throw (ex-info "boom" {}))))
+    (registry/event! {:kind :eval! :slug :s :msg "one"})
+    (registry/event! {:kind :eval! :slug :s :msg "two"})
+    (registry/event! {:kind :eval! :slug :s :msg "three"})
+    (is (= 1 (count (filter #(= :tap-disarmed (:kind %)) @registry/events*))))))
+
+(deftest mutate-tap-throw-disarms-and-receipts-test
+  (testing "a throwing mutate-tap never breaks the mutation path — the swap ∧
+            EDN assert ∧ version bump all precede the tap; slot disarmed ⊕
+            ONE receipt"
+    (reset! registry/mutate-tap* (fn [_ _] (throw (RuntimeException. "disk gone"))))
+    (let [before-version @registry/version*
+          [old new] (registry/mutate! #(assoc % :s {:tape [] :turns 0}))]
+      (is (= {} old))
+      (is (= {:s {:tape [] :turns 0}} new) "mutation landed despite the tap throw")
+      (is (< before-version @registry/version*) "version bumped normally"))
+    (is (nil? @registry/mutate-tap*) "slot disarmed")
+    (let [receipts (filterv #(= :tap-disarmed (:kind %)) @registry/events*)]
+      (is (= 1 (count receipts)))
+      (is (re-find #"mutate-tap threw .*disk gone" (:msg (first receipts)))))))
+
+(deftest mutate-tap-disarm-observed-by-event-tap-test
+  (testing "the mutate-tap disarm receipt flows through event! — a healthy,
+            still-armed event-tap OBSERVES it (the transcript records the
+            durability loss) and is NOT itself disarmed"
+    (let [seen (atom [])]
+      (reset! registry/event-tap* (fn [e] (swap! seen conj (:kind e))))
+      (reset! registry/mutate-tap* (fn [_ _] (throw (ex-info "x" {}))))
+      (registry/mutate! #(assoc % :a {:tape [] :turns 0}))
+      (is (= [:tap-disarmed] @seen) "event-tap saw the receipt")
+      (is (some? @registry/event-tap*) "event-tap survives a mutate-tap disarm")
+      (is (nil? @registry/mutate-tap*)))))
