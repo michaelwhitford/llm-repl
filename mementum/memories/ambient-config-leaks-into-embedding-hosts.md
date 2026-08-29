@@ -1,30 +1,28 @@
 ---
-type: insight
-symbol: 💡
-title: Require-time ambient config leaks the operator's machine into every embedding host
-related: [knowledge/design/library-contract, knowledge/state-audit, memories/config-stickiness, memories/probe-hygiene-tools-armed]
+type: pattern
+symbol: 🔁
+title: Library namespaces must be inert at require — ambient reads belong to standalone entrypoints
+related: [knowledge/design/library-contract, memories/config-stickiness, memories/probe-hygiene-tools-armed]
 ---
 
-First-consumer contact (anima migration, SUGGEST 2026-08-29): roster's
-`(defonce config* (atom (load-config)))` fires at ns LOAD, so requiring
-`us.whitford.llm-repl` in ANY host JVM reads the operator's personal
-`~/.config/llm-repl/config.edn`. Observed live: `:tools true` leaked into
-anima's embedded session configs — the session config LIED (anima's injected
-`:complete-fn` never reads it), and one accidental `default-complete` call
-would have armed self-eval tools ∧ honored `:attach` inside a process that is
-not the standalone tool. A bad operator file also breaks `require` itself
-(validate-config throws on whoever's classpath loads the ns).
+The law (holds regardless of any one ns's current state): a ns consumed as a
+LIBRARY may not do ambient IO at require — no `defonce (atom (load-io))`,
+no env/file/home-dir reads. The operator's personal machine config becomes
+invisible input to every host JVM on the box, and a bad file breaks
+`require` itself on whoever's classpath loads the ns. Ambient resolution is
+the STANDALONE entrypoint's job (main/daemon load it explicitly at startup);
+the library defaults to builtins until the host calls `init!`.
 
-Two lessons:
+Corollaries, learned the hard way (anima migration, 2026-08-29 — roster's
+require-time `config*` leaked the operator's `:tools true` into embedded
+session configs; fix ≡ library-config-inert-default):
 
-- **Laziness is a precondition of every fix.** An `init!-skips-autoload` knob
-  is insufficient — the file read fires at require, BEFORE any host call.
-- **The house pattern already exists**: trace is nil-until-`init!` (which is
-  exactly why anima had no flight-recorder hazard). Roster is the outlier by
-  standalone-first history only. Same law escapement ratified for its library
-  mode (inject credentials, never read env/files).
+- **Laziness is a precondition of every fix.** An opt-out knob can't help —
+  the read fires at require, before any host call could run.
+- **Reload must re-fold from the SOURCE, not the value** — else reload
+  resurrects the leak a host's init! suppressed.
+- Precedents: trace (nil-until-`init!` — why anima had zero flight-recorder
+  hazard) ∧ escapement library mode (inject credentials, never read env).
 
-Fix ≡ ⚪ library-config-inert-default (queue): ambient reads become
-UNREACHABLE from the library surface — the file chain moves to standalone
-entrypoints; config SOURCE modeled as data so `reload-config!` can't
-resurrect the leak.
+Test for any NEW ns: would `(require …)` alone touch disk, env, or home?
+Then it's standalone code, not library code.
