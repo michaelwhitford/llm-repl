@@ -87,48 +87,48 @@
 
 (deftest build-request-messages-projection-test
   (let [t   (-> [] (tape/append-user "hi") (tape/append-assistant "yo"))
-        req (completion/build-request {:model :m :preamble? false} :s t)]
+        req (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false} :s t)]
     (is (= (tape/render-messages t) (:messages req)))))
 
 (deftest build-request-conversation-id-test
-  (let [req (completion/build-request {:model :m :preamble? false} :probe [])]
+  (let [req (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false} :probe [])]
     (is (= :probe (:conversation/id req)))))
 
 (deftest build-request-system-cache-control-test
-  (let [req (completion/build-request {:model :m :preamble? false} :s [])]
+  (let [req (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false} :s [])]
     (is (= {:type :ephemeral} (:system-cache-control req)))))
 
 (deftest build-request-system-nil-when-blank-and-no-preamble-test
-  (let [req (completion/build-request {:model :m :system "" :preamble? false} :s [])]
+  (let [req (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/system "" :us.whitford.llm-repl/preamble? false} :s [])]
     (is (not (contains? req :system)))))
 
 (deftest build-request-preamble-applied-test
   (with-redefs [llm/config (fn [] {:preamble "TEST-PREAMBLE"})]
-    (let [req (completion/build-request {:model :m :system "sys text" :preamble? true} :s [])]
+    (let [req (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/system "sys text" :us.whitford.llm-repl/preamble? true} :s [])]
       (is (= "TEST-PREAMBLE\n\nsys text" (:system req))))))
 
 (deftest build-request-thinking-modeled-test
   (testing "false → {:type :disabled}"
     (is (= {:type :disabled}
-           (:thinking (completion/build-request {:model :m :preamble? false :thinking false} :s [])))))
+           (:thinking (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/thinking false} :s [])))))
   (testing "true → absent (server default)"
-    (is (not (contains? (completion/build-request {:model :m :preamble? false :thinking true} :s [])
+    (is (not (contains? (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/thinking true} :s [])
                         :thinking))))
   (testing "a modeled map passes through"
     (is (= {:type :enabled :budget-tokens 1024}
            (:thinking (completion/build-request
-                       {:model :m :preamble? false :thinking {:type :enabled :budget-tokens 1024}}
+                       {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/thinking {:type :enabled :budget-tokens 1024}}
                        :s [])))))
   (testing "nil → absent"
-    (is (not (contains? (completion/build-request {:model :m :preamble? false :thinking nil} :s [])
+    (is (not (contains? (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/thinking nil} :s [])
                         :thinking)))))
 
 (deftest build-request-temperature-test
   (testing "present"
     (is (= 0.7 (:temperature (completion/build-request
-                              {:model :m :preamble? false :temperature 0.7} :s [])))))
+                              {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/temperature 0.7} :s [])))))
   (testing "absent"
-    (is (not (contains? (completion/build-request {:model :m :preamble? false} :s []) :temperature)))))
+    (is (not (contains? (completion/build-request {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false} :s []) :temperature)))))
 
 ;; ── assistant-text ────────────────────────────────────────────────────────
 
@@ -172,33 +172,33 @@
 (deftest with-tools-system-substitutes-slug-test
   ;; the shipped default (builtin-defaults :orientation, bottom of the chain)
   (with-redefs [llm/config (fn [] llm/builtin-defaults)]
-    (let [oriented (:system (completion/with-tools-system {} {:model :m} :s))]
+    (let [oriented (:system (completion/with-tools-system {} {:us.whitford.llm-repl/model :m} :s))]
       (is (str/includes? oriented ":s"))
       (is (not (str/includes? oriented "{slug}"))))))
 
 (deftest with-tools-system-appends-with-blank-line-test
   (is (= "existing\n\nT:s"
          (:system (completion/with-tools-system
-                   {:system "existing"} {:orientation "T{slug}"} :s)))))
+                   {:system "existing"} {:us.whitford.llm-repl/orientation "T{slug}"} :s)))))
 
 (deftest with-tools-system-creates-system-when-absent-test
-  (is (= "T:s" (:system (completion/with-tools-system {} {:orientation "T{slug}"} :s)))))
+  (is (= "T:s" (:system (completion/with-tools-system {} {:us.whitford.llm-repl/orientation "T{slug}"} :s)))))
 
 (deftest with-tools-system-session-config-replaces-test
   ;; D7: what the redef extension point became — a session config key
   (is (= "custom orientation for :probe only"
          (:system (completion/with-tools-system
-                   {} {:orientation "custom orientation for {slug} only"} :probe)))))
+                   {} {:us.whitford.llm-repl/orientation "custom orientation for {slug} only"} :probe)))))
 
 (deftest with-tools-system-root-chain-test
   (with-redefs [llm/config (fn [] {:orientation "root {slug} orientation"})]
     (is (= "root :s orientation"
-           (:system (completion/with-tools-system {} {:model :m} :s))))))
+           (:system (completion/with-tools-system {} {:us.whitford.llm-repl/model :m} :s))))))
 
 (deftest with-tools-system-explicit-none-leaves-request-untouched-test
   ;; chain resolves to NONE → an intentionally unoriented armed session
-  (is (= {} (completion/with-tools-system {} {:orientation false} :s)))
-  (is (= {:system "keep"} (completion/with-tools-system {:system "keep"} {:orientation nil} :s))))
+  (is (= {} (completion/with-tools-system {} {:us.whitford.llm-repl/orientation false} :s)))
+  (is (= {:system "keep"} (completion/with-tools-system {:system "keep"} {:us.whitford.llm-repl/orientation nil} :s))))
 
 ;; ── tool loop ─────────────────────────────────────────────────────────────
 
@@ -212,8 +212,8 @@
   (let [responses (atom [(tool-use-response "1" "test_echo" {:x 42}) (text-response "final answer")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (let [out ((completion/tool-complete config :s) [])]
         (testing "dispatches once, returns the final text"
@@ -231,8 +231,8 @@
                          (text-response "done")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       ((completion/tool-complete config :s) [])
       (testing "the tool_result riding the SECOND request carries the round-0 remaining count"
@@ -247,8 +247,8 @@
                          (text-response "the final word")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)
                   completion/tool-bounce-budget 2]
       (let [out ((completion/tool-complete config :s) [])]
@@ -266,8 +266,8 @@
   (let [responses (atom [(empty-response)])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (let [out ((completion/tool-complete config :s) [])]
         (is (= completion/empty-completion-marker out))
@@ -280,8 +280,8 @@
                          (empty-response)])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)
                   completion/tool-bounce-budget 2]
       (let [out ((completion/tool-complete config :s) [])]
@@ -292,7 +292,7 @@
   (let [responses (atom [(empty-response)])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (let [out ((completion/plain-complete config :s) [])]
         (is (= completion/empty-completion-marker out))
@@ -304,7 +304,7 @@
   (let [responses (atom [(text-response "hi")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools nil}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools nil}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (let [out ((completion/default-complete config :s) [])]
         (is (= "hi" out))
@@ -314,8 +314,8 @@
   (let [responses (atom [(text-response "hi")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       ((completion/default-complete config :s) [])
       (is (seq (:tools (first @requests)))))))
@@ -324,8 +324,8 @@
   (let [responses (atom [(text-response "hi")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (binding [completion/*tool-depth* 1]
         ((completion/default-complete config :s) [])))
@@ -357,7 +357,7 @@
         responses (atom [(text-response "yo")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil}
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil}
         t         (tape/append-user [] "hi")]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       ((completion/plain-complete config :s) t))
@@ -372,7 +372,7 @@
         stub  (stub-backend (atom [(text-response "yo")]) (atom []))]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (binding [trace/*capture?* false]
-        ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+        ((completion/plain-complete {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil} :s)
          (tape/append-user [] "hi"))))
     (testing "no blobs — the tapeless drivers' receipt-only contract"
       (is (nil? (read-blob store "nodes/s/1/turns/1/request.edn")))
@@ -386,7 +386,7 @@
         requests (atom [])
         ex       (with-redefs [completion/session-backend (fn [_ _] (boom-backend requests boom))]
                    (binding [trace/*capture?* false]
-                     (try ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+                     (try ((completion/plain-complete {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil} :s)
                            (tape/append-user [] "hi"))
                           nil
                           (catch Throwable t t))))]
@@ -419,8 +419,8 @@
                       (if-let [r (first @responses)]
                         (do (swap! responses rest) r)
                         (throw boom))))
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}
         ex        (with-redefs [completion/session-backend (fn [_ _] flaky)]
                     (try ((completion/tool-complete config :s) [])
                          nil
@@ -435,7 +435,7 @@
 (deftest failed-send-untraced-rethrows-the-original-test
   (let [boom (ex-info "boom" {:x 1})
         ex   (with-redefs [completion/session-backend (fn [_ _] (boom-backend (atom []) boom))]
-               (try ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+               (try ((completion/plain-complete {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil} :s)
                      (tape/append-user [] "hi"))
                     nil
                     (catch Throwable t t)))]
@@ -450,8 +450,8 @@
                          (text-response "final")])
         requests  (atom [])
         stub      (stub-backend responses requests)
-        config    {:model :m :preamble? false :system nil :tools [:test/echo]
-                   :orientation "orient {slug}"}]
+        config    {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :us.whitford.llm-repl/system nil :us.whitford.llm-repl/tools [:test/echo]
+                   :us.whitford.llm-repl/orientation "orient {slug}"}]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       ((completion/tool-complete config :s) []))
     (testing "the BASE request (tools ⊕ oriented system) captured at turn 0"
@@ -478,7 +478,7 @@
   (let [requests (atom [])
         stub     (stub-backend (atom [(text-response "hi")]) requests)]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
-      ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+      ((completion/plain-complete {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil} :s)
        (tape/append-user [] "q")))
     (let [[e] (trace/sends)]
       (testing "the ✓ send landed: slug, the request that rode the wire, response"
@@ -491,7 +491,7 @@
   (let [stub (stub-backend (atom [(text-response "probe")]) (atom []))]
     (with-redefs [completion/session-backend (fn [_ _] stub)]
       (binding [trace/*capture?* false]        ; ≡ inside bounce!/trampoline!
-        ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+        ((completion/plain-complete {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil} :s)
          (tape/append-user [] "q")))))
   (testing "the tapeless ✓ path records — THE hole this decision closes"
     (is (= [true] (mapv :ok? (trace/sends))))))
@@ -500,7 +500,7 @@
   (let [boom (boom-backend (atom []) (ex-info "HTTP 400" {:status 400}))]
     (with-redefs [completion/session-backend (fn [_ _] boom)]
       (is (thrown? Exception
-                   ((completion/plain-complete {:model :m :preamble? false :system nil} :s)
+                   ((completion/plain-complete {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble? false :system nil} :s)
                     (tape/append-user [] "q"))))))
   (let [[e] (trace/sends)]
     (testing "the ✗ send landed as data"

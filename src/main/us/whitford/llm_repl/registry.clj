@@ -214,8 +214,8 @@
   [reg]
   (reduce-kv (fn [m slug s]
                (assoc m slug {:slug        slug
-                              :model       (get-in s [:config :model])
-                              :preamble?   (get-in s [:config :preamble?])
+                              :model       (get-in s [:config :us.whitford.llm-repl/model])
+                              :preamble?   (get-in s [:config :us.whitford.llm-repl/preamble?])
                               :depth       (count (:tape s))
                               :turns       (:turns s)
                               :forked-from (:forked-from s)

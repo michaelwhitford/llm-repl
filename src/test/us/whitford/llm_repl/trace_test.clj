@@ -162,9 +162,9 @@
 
 (deftest mutate-tap-snapshots-changed-sessions-test
   (let [{:keys [store]} (install-mem!)]
-    (registry/mutate! #(assoc % :s {:slug :s :tape [] :config {:model :m} :turns 0}))
+    (registry/mutate! #(assoc % :s {:slug :s :tape [] :config {:us.whitford.llm-repl/model :m} :turns 0}))
     (testing "creation → full session map at tape.edn"
-      (is (= {:slug :s :tape [] :config {:model :m} :turns 0}
+      (is (= {:slug :s :tape [] :config {:us.whitford.llm-repl/model :m} :turns 0}
              (read-edn store "nodes/s/1/tape.edn"))))
     (registry/mutate! #(update-in % [:s :tape] conj {:role :user :text "hi"}))
     (testing "change → snapshot follows (latest wins)"
@@ -206,12 +206,12 @@
   (let [{:keys [store]} (install-mem! {:visit 3})]
     (seed-tape! store "s" 1 {:slug :s :tape [{:role :user :text "old"}] :config {} :turns 0})
     (seed-tape! store "s" 2 {:slug :s :tape [{:role :user :text "new"}
-                                             {:role :assistant :text "r"}] :config {:model :m} :turns 1})
+                                             {:role :assistant :text "r"}] :config {:us.whitford.llm-repl/model :m} :turns 1})
     (trace/recover!)
     (testing "the max-visit snapshot is the one recovered, whole session map"
       (let [s (get @registry/sessions* :s)]
         (is (= 2 (count (:tape s))))
-        (is (= {:model :m} (:config s)))))
+        (is (= {:us.whitford.llm-repl/model :m} (:config s)))))
     (testing "loud receipt per recovered session"
       (is (some #(and (= :recover (:kind %)) (= :s (:slug %)) (= "@2" (:msg %)))
                 @registry/events*)))))
@@ -273,7 +273,7 @@
       (registry/mutate! #(assoc % :s {:slug :s
                                       :tape [{:role :user :text "hi"}
                                              {:role :assistant :text "yo"}]
-                                      :config {:model :m} :turns 1}))
+                                      :config {:us.whitford.llm-repl/model :m} :turns 1}))
       (trace/capture! :s 1 "response"
                       {:content [{:type :text :text "yo"}]} "yo")
       (registry/event! {:kind :eval! :slug :s :msg "✓@2"})
@@ -295,7 +295,7 @@
                 eval!-able (configuration-completeness)"
         (let [s (get @registry/sessions* :s)]
           (is (= 2 (count (:tape s))))
-          (is (= {:model :m} (:config s)))
+          (is (= {:us.whitford.llm-repl/model :m} (:config s)))
           (is (= "yo" (get-in s [:tape 1 :text])))))
       (testing "recovery was loud"
         (is (some #(and (= :recover (:kind %)) (= :s (:slug %)))

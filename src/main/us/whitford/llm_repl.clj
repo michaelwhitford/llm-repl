@@ -127,24 +127,28 @@
    request-build time (session :system > model > provider > root
    :system-prompt) — a session that wants its own voice passes :system."
   []
-  {:model       (llm/default-model)
-   :preamble?   true
-   :thinking    nil
-   :temperature nil
-   :tools       (llm/default-tools)})
+  {::model       (llm/default-model)
+   ::preamble?   true
+   ::thinking    nil
+   ::temperature nil
+   ::tools       (llm/default-tools)})
 
 (def config-keys
   "The interpreter knobs a caller may set at open/eval/fork — merged into the
-   session's :config (persisted; a REPL remembers its interpreter).
-   :preamble ≡ a per-session boot-text override (string | {:file path} |
+   session's :config (persisted; a REPL remembers its interpreter). FULLY
+   QUALIFIED (D11): this map ESCAPES into host space via `snapshot`, so its
+   keys must be collision-proof against any keyword — spell them `::repl/model`
+   etc. behind `(require '[us.whitford.llm-repl :as repl])`.
+   ::preamble ≡ a per-session boot-text override (string | {:file path} |
    false ≡ none); absent inherits model > provider > config chain
-   (roster/resolve-preamble). :preamble? stays the apply-or-not boolean —
-   the counterfactual knob. :tools arms the SELF-EVAL loop (accretion #3):
+   (roster/resolve-preamble). ::preamble? stays the apply-or-not boolean —
+   the counterfactual knob. ::tools arms the SELF-EVAL loop (accretion #3):
    true ≡ every registered tool | [kw …] ≡ whitelist from tools/tool-registry*
    | nil/absent ≡ none (plain completion, anima behavior). Persisted like any
-   knob — forkable, ab!-able: (ab! :s {:bare {:tools nil} :armed {:tools true}}
-   probe) is the does-the-tool-help counterfactual."
-  [:model :system :preamble :preamble? :thinking :temperature :tools])
+   knob — forkable, ab!-able:
+   (ab! :s {:bare {::repl/tools nil} :armed {::repl/tools true}} probe)
+   is the does-the-tool-help counterfactual."
+  [::model ::system ::preamble ::preamble? ::thinking ::temperature ::tools])
 
 ;; ── THE rf-factory (transducer-compatible; the transducer IS the mechanism) ───
 
@@ -277,12 +281,12 @@
    `:orientation` (settable only via config files today, but a session-level
    override is legal on the D7 chain and thus unsettable). The D8 schema
    will teach the model this set; until then the error message does."
-  (conj config-keys :orientation))
+  (conj config-keys ::orientation))
 
 (def ^:private chain-resumed-keys
   "The prompt-stack keys: session absence ≡ the D7 request-time chain
    (model > provider > root) takes over — for these, unset ≡ plain dissoc."
-  #{:system :preamble :orientation})
+  #{::system ::preamble ::orientation})
 
 (defn ^{:manual "Remove session config overrides so defaults/prompt chain resume."} unset!
   "Remove config override(s) `ks` from the session at `slug` — the STICKY
@@ -290,9 +294,9 @@
    and never removes, so a poison override used to outlive everything short
    of `drop!`). NOT nil-assignment: present-nil keeps its D7 meaning
    (explicitly none — STOPS the prompt chain); unset RESUMES it. Per-key
-   semantics (ratified): prompt-stack keys (:system :preamble :orientation)
+   semantics (ratified): prompt-stack keys (::system ::preamble ::orientation)
    are DISSOC'd — the request-time chain takes over; the default-seeded
-   knobs (:model :preamble? :thinking :temperature :tools) RE-SEED from the
+   knobs (::model ::preamble? ::thinking ::temperature ::tools) RE-SEED from the
    live `(default-config)` — bare dissoc would mint new poison (:model
    absent ≡ a broken send; :tools absent ≡ none, not default). One mental
    model: whatever would govern a FRESH session governs again.
@@ -634,7 +638,7 @@
   "Copy the tape (call/cc): a NEW session `to` carrying the same tape ∧ config as
    `from`, with any `opts` config overrides merged in — two continuations from
    one prefix (cheap for the model: shared KV prefix). Override a knob (e.g.
-   {:preamble? false}) for the counterfactual boot.
+   {::preamble? false}) for the counterfactual boot.
 
    `:at` ≡ fork an OLDER turn: truncate the copy to the first N MESSAGES (the
    depth number the prompt shows — 2 per exchange). (fork! :scratch :redo

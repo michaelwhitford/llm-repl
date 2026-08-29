@@ -107,14 +107,20 @@ renders that one compile:
 (run-battery! :s [...])        ; fold a probe sequence, tape advances
 (fork! :s :variant)            ; copy tape+config — counterfactuals are cheap
 (fork! :s :redo {:at 2})       ; branch an OLDER turn (first 2 messages)
-(ab! :s                        ; N-arm counterfactual from a common parent:
-     {:a {:system "Be terse."} ;   fork per variant (children PERSIST as
-      :b {:model :gemma}}      ;   :s-a, :s-b), same probe on each —
-     "the probe")              ;   replies differ ONLY by config
+(ab! :s                          ; N-arm counterfactual from a common parent:
+     {:a {::system "Be terse."}  ;   fork per variant (children PERSIST as
+      :b {::model :gemma}}       ;   :s-a, :s-b), same probe on each —
+     "the probe")                ;   replies differ ONLY by config
 (sessions-list)                ; the registry index (depth, turns, fork edges)
 (snapshot :s)                  ; the full session map, tape included
 (drop! :s)                     ; delete a session
 ```
+
+Session config keys are **namespace-qualified** (`:us.whitford.llm-repl/model`
+etc.) so they can never collide with your own keys once a session map lands in
+your code. At the repl prompt you're *in* that namespace — `::model ::tools
+::preamble?` — and from your own code `(require '[us.whitford.llm-repl :as
+repl])` gives you `::repl/model`.
 
 Every driver returns **data** — errors included (`{:repl/error "…"}`, never a
 throw mid-experiment). `fork!`/`ab!` children record `:forked-from`/`:forked-at`,
@@ -128,7 +134,7 @@ receipts — while a human watches the same registry from the TUI.
 
 ## Self-eval — the model as its own client
 
-Arm a session with `:tools` and the model gets **`clojure_eval`**: it
+Arm a session with `::tools` and the model gets **`clojure_eval`**: it
 evaluates Clojure *in the process hosting its own conversation*. This is not
 a sandbox bolted on the side — the loop assembling its prompt, the tape that
 is its memory, and the runtime it evals in are one live image. Armed
@@ -137,10 +143,10 @@ can compute instead of guessing, inspect its own tape mid-turn, list itself
 in the registry, `fork!` its own history and `bounce!` probes off it:
 
 ```clojure
-(open! :s {:tools true})            ; arm one session (true ≡ every registered tool)
-(open! :s {:tools [:clojure/eval]}) ; …or an explicit whitelist
-(open! :bare {:tools nil})          ; disarm — or run the counterfactual directly:
-(ab! :s {:bare {:tools nil} :armed {:tools true}} "the probe")
+(open! :s {::tools true})            ; arm one session (true ≡ every registered tool)
+(open! :s {::tools [:clojure/eval]}) ; …or an explicit whitelist
+(open! :bare {::tools nil})          ; disarm — or run the counterfactual directly:
+(ab! :s {:bare {::tools nil} :armed {::tools true}} "the probe")
 ```
 
 Make it a machine fact with `:tools true` at the top level of your config
@@ -172,14 +178,14 @@ Text glued to the top of every system prompt, resolved through an inheritance
 chain — **first-present wins** (a level replaces, never concatenates):
 
 ```
-session :preamble  >  model :model/preamble  >  provider :provider/preamble  >  config :preamble
+session ::preamble  >  model :model/preamble  >  provider :provider/preamble  >  config :preamble
 ```
 
 Absent ≡ inherit upward; `false`/`""` ≡ explicitly none. Values: a literal
 string or `{:file "~/path.txt"}`. The tool ships only a bland generic default —
 your machine's boot seed belongs in *your* config file, not in this repo.
-`{:preamble? false}` on a fork disables the layer entirely (the counterfactual
-boot probe); `{:preamble "..."}` on a fork A/B-tests the preamble itself.
+`{::preamble? false}` on a fork disables the layer entirely (the counterfactual
+boot probe); `{::preamble "..."}` on a fork A/B-tests the preamble itself.
 
 ## Lineage
 

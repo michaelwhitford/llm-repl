@@ -154,9 +154,9 @@
 ;; ── open! idempotent get-or-create; drop!/reset-all! ────────────────────
 
 (deftest open!-idempotent-and-config-merge-test
-  (repl/open! :o {:temperature 0.1})
-  (repl/open! :o {:temperature 0.9})
-  (is (= 0.9 (get-in (repl/snapshot :o) [:config :temperature])) "reopen merges config")
+  (repl/open! :o {::repl/temperature 0.1})
+  (repl/open! :o {::repl/temperature 0.9})
+  (is (= 0.9 (get-in (repl/snapshot :o) [:config ::repl/temperature])) "reopen merges config")
   (is (= 1 (count (filter #(= :open! (:kind %)) @registry/events*)))
       "only ONE open! event fired — the reopen was a merge, not a creation"))
 
@@ -164,7 +164,7 @@
   (testing "PUBLIC surface (library-contract): a VECTOR of compact maps, no
             message bodies — the shape is registry/index's, flattened here,
             and it must not drift when the TUI's wire payload changes"
-    (repl/open! :sl {:model "m1"})
+    (repl/open! :sl {::repl/model "m1"})
     (repl/eval! :sl "hello" {:complete-fn stub-complete})
     (let [[s :as all] (repl/sessions-list)]
       (is (vector? all))
@@ -309,7 +309,7 @@
 
 (deftest ab!-children-named-via-variant-slug-test
   (repl/open! :base)
-  (let [r (repl/ab! :base {:bare {} :armed {:tools true}} "probe" {:complete-fn stub-complete})]
+  (let [r (repl/ab! :base {:bare {} :armed {::repl/tools true}} "probe" {:complete-fn stub-complete})]
     (is (= #{:bare :armed} (set (keys (:repl/variants r)))))
     (is (some? (repl/snapshot (repl/variant-slug :base :bare))))
     (is (some? (repl/snapshot (repl/variant-slug :base :armed))))
@@ -342,20 +342,20 @@
 
 (deftest open!-captures-seed-test
   (let [store (install-trace!)]
-    (repl/open! :s {:model :m})
+    (repl/open! :s {::repl/model :m})
     (testing "creation writes the replayable seed (config ⊕ birth metadata)"
       (let [seed (read-blob store "nodes/s/1/seed.edn")]
         (is (= :s (:slug seed)))
-        (is (= :m (get-in seed [:config :model])))))
+        (is (= :m (get-in seed [:config ::repl/model])))))
     (testing "re-open! does not re-seed (creation only)"
       (eproto/write-artifact! store "main" "nodes/s/1/seed.edn" "sentinel" {})
-      (repl/open! :s {:temperature 0.5})
+      (repl/open! :s {::repl/temperature 0.5})
       (is (= "sentinel" (eproto/read-artifact store "main" "nodes/s/1/seed.edn"))))))
 
 (deftest eval!-default-path-captures-and-refs-test
   (let [store (install-trace!)]
     (with-redefs [completion/session-backend (fn [_ _] (stub-backend "yo"))]
-      (repl/eval! :s "hi" {:model :m :preamble? false :system nil}))
+      (repl/eval! :s "hi" {::repl/model :m ::repl/preamble? false ::repl/system nil}))
     (testing "response blob landed at the assistant's tape index (1)"
       (is (= "yo" (-> (read-blob store "nodes/s/1/turns/1/response.edn")
                       :content first :text))))
@@ -384,8 +384,8 @@
   (let [store (install-trace!)]
     (repl/open! :s)
     (with-redefs [completion/session-backend (fn [_ _] (stub-backend "out"))]
-      (repl/bounce! :s "probe" {:model :m :preamble? false :system nil})
-      (repl/trampoline! :s ["p1" "p2"] {:model :m :preamble? false :system nil}))
+      (repl/bounce! :s "probe" {::repl/model :m ::repl/preamble? false ::repl/system nil})
+      (repl/trampoline! :s ["p1" "p2"] {::repl/model :m ::repl/preamble? false ::repl/system nil}))
     (testing "no request/response blobs from tapeless sends (human-decided:
               colliding turn numbers — the receipt stream is their trace)"
       (is (nil? (read-blob store "nodes/s/1/turns/1/request.edn")))
@@ -399,7 +399,7 @@
         boom  (ex-info "llama.cpp API error: HTTP 400" {:status 400})]
     (repl/open! :s)
     (let [r (with-redefs [completion/session-backend (fn [_ _] (boom-backend boom))]
-              (repl/bounce! :s "probe" {:model :m :preamble? false :system nil}))]
+              (repl/bounce! :s "probe" {::repl/model :m ::repl/preamble? false ::repl/system nil}))]
       (testing "error-as-data unchanged — drivers still never throw"
         (is (= "send failed: llama.cpp API error: HTTP 400" (:repl/error r))))
       (testing "the exception to receipt-only: a FAILED tapeless send commits
@@ -419,7 +419,7 @@
                   (with-redefs [completion/session-backend
                                 (fn [_ _] (boom-backend (ex-info "down" {})))]
                     (repl/trampoline! :s ["p1" "p2" "p3"]
-                                      {:model :m :preamble? false :system nil})))
+                                      {::repl/model :m ::repl/preamble? false ::repl/system nil})))
         refs  (mapv :io/ref (:repl/bounces r))]
     (testing "a fan-out over a down backend fails N times inside the same
               millisecond — N distinct files, none overwritten"
@@ -454,28 +454,28 @@
   (testing "unsetting a default-seeded knob RE-SEEDS from the live
             (default-config) — bare dissoc would mint new poison (:model
             absent ≡ broken send; :tools absent ≡ none, not default)"
-    (repl/open! :u {:tools [:clojure/eval] :temperature 0.9 :model :poison/model})
-    (let [r (repl/unset! :u :tools :temperature :model)
+    (repl/open! :u {::repl/tools [:clojure/eval] ::repl/temperature 0.9 ::repl/model :poison/model})
+    (let [r (repl/unset! :u ::repl/tools ::repl/temperature ::repl/model)
           d (repl/default-config)
           c (:config (repl/snapshot :u))]
-      (is (= [:tools :temperature :model] (:repl/unset r)))
-      (is (= (:tools d) (:tools c)) "config default governs again")
-      (is (= (:temperature d) (:temperature c)))
-      (is (= (:model d) (:model c)) "the poison model override is gone")
-      (is (contains? c :model) "seeded keys stay PRESENT — never dissoc'd"))))
+      (is (= [::repl/tools ::repl/temperature ::repl/model] (:repl/unset r)))
+      (is (= (::repl/tools d) (::repl/tools c)) "config default governs again")
+      (is (= (::repl/temperature d) (::repl/temperature c)))
+      (is (= (::repl/model d) (::repl/model c)) "the poison model override is gone")
+      (is (contains? c ::repl/model) "seeded keys stay PRESENT — never dissoc'd"))))
 
 (deftest unset!-prompt-keys-dissoc-test
   (testing "unsetting a prompt-stack key DISSOCs — the D7 request-time chain
             resumes (session > model > provider > root)"
-    (repl/open! :u {:system "custom voice" :preamble false})
-    (repl/unset! :u :system :preamble)
+    (repl/open! :u {::repl/system "custom voice" ::repl/preamble false})
+    (repl/unset! :u ::repl/system ::repl/preamble)
     (let [c (:config (repl/snapshot :u))]
-      (is (not (contains? c :system)))
-      (is (not (contains? c :preamble)))))
+      (is (not (contains? c ::repl/system)))
+      (is (not (contains? c ::repl/preamble)))))
   (testing "present-nil is NOT unset — the two semantics are OPPOSITES (nil
             STOPS the chain ≡ explicitly none; unset RESUMES it)"
-    (repl/open! :u2 {:system nil})
-    (is (contains? (:config (repl/snapshot :u2)) :system)
+    (repl/open! :u2 {::repl/system nil})
+    (is (contains? (:config (repl/snapshot :u2)) ::repl/system)
         "open! preserved the explicit none; only unset! removes it")))
 
 (deftest unset!-errors-as-data-test
@@ -483,20 +483,20 @@
     (repl/open! :u {})
     (is (str/includes? (:repl/error (repl/unset! :u :bogus)) "unknown config key")
         "unknown key names itself")
-    (is (str/includes? (:repl/error (repl/unset! :u :bogus)) ":orientation")
+    (is (str/includes? (:repl/error (repl/unset! :u :bogus)) "orientation")
         "…and teaches the unsettable set")
     (is (str/includes? (:repl/error (repl/unset! :u)) "at least one key"))
-    (is (= "no such repl session: :ghost" (:repl/error (repl/unset! :ghost :tools))))))
+    (is (= "no such repl session: :ghost" (:repl/error (repl/unset! :ghost ::repl/tools))))))
 
 (deftest unset!-receipt-and-idempotence-test
   (testing "one loud receipt per unset!; unsetting an already-default key is
             harmless (still receipted — the caller asked, the caller hears)"
     (repl/open! :u {})
-    (repl/unset! :u :temperature)
-    (repl/unset! :u :temperature)
+    (repl/unset! :u ::repl/temperature)
+    (repl/unset! :u ::repl/temperature)
     (is (= 2 (count (filter #(= :unset! (:kind %)) @registry/events*))))
-    (is (= (:temperature (repl/default-config))
-           (:temperature (:config (repl/snapshot :u)))))))
+    (is (= (::repl/temperature (repl/default-config))
+           (::repl/temperature (:config (repl/snapshot :u)))))))
 
 ;; ── register-manual-ns! — guarded (D9 registration-guards) ────────────────
 

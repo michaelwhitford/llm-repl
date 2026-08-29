@@ -13,7 +13,7 @@
  :providers {:local  {:provider/kind :llamacpp}
              :openai {:provider/kind :codex}}
 
- ;; Models — the roster. Open a session on one with (open! :s {:model :name}).
+ ;; Models — the roster. Open a session on one with (open! :s {::model :name}).
  ;; For :llamacpp providers :model/port is required — the server's port.
  ;; Optional, with defaults:
  ;;   :model/host               "localhost" — where the server runs. Name a
@@ -35,7 +35,7 @@
           :gpt-5.5        {:model/provider :openai}}
 
  ;; Thinking models (Qwen and friends): reasoning is ON by default. Turn it
- ;; off per session at the repl with (open! :s {:thinking false}) — or fork
+ ;; off per session at the repl with (open! :s {::thinking false}) — or fork
  ;; the same tape both ways and compare. Only :llamacpp providers can reach
  ;; this switch; plain OpenAI-compatible endpoints ignore it.
 
@@ -49,8 +49,8 @@
  ;; Examples:
  ;;   :providers {:local {:provider/preamble "all local models boot with this"}}
  ;;   :models    {:qwen36-35b-a3b {:model/preamble {:file "~/.config/llm-repl/qwen-boot.txt"}}}
- ;;   at the repl: (open! :s {:preamble "just this session"})
- ;;                (fork! :s :bare {:preamble? false})   ; same tape, no preamble
+ ;;   at the repl: (open! :s {::preamble "just this session"})
+ ;;                (fork! :s :bare {::preamble? false})   ; same tape, no preamble
 
  ;; The WHOLE prompt stack resolves the same way (same chain, same value
  ;; shapes — string | {:file path} | false). Every layer is replaceable, so
@@ -83,9 +83,9 @@
  ;;                   drive the session commands through it)
  ;;   [:clojure/eval] an explicit whitelist
  ;;   absent or nil   no tools; arm per session instead:
- ;;                     (open! :s {:tools true})
+ ;;                     (open! :s {::tools true})
  ;; Armed sessions also get a system-prompt line telling the model where it
- ;; lives. Disarm any one session with (open! :s {:tools nil}) — or fork the
+ ;; lives. Disarm any one session with (open! :s {::tools nil}) — or fork the
  ;; same tape both ways and compare.
  ;; :tools true
 

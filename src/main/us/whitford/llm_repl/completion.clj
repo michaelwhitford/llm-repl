@@ -84,7 +84,7 @@
    slot pin + prompt-cache key); `:system-cache-control` stamps `cache_prompt`
    on the llama.cpp wire (the direct path bypasses escapement's auto-cache — we
    do it here)."
-  [{:keys [model preamble? thinking temperature] :as config} slug tape]
+  [{:us.whitford.llm-repl/keys [model preamble? thinking temperature] :as config} slug tape]
   (let [sys (llm/resolve-system-prompt config)
         sys (if preamble?
               (llm/with-preamble (llm/resolve-preamble config) sys)
@@ -117,7 +117,7 @@
    direct qualified CALL from another ns would not; keeping this a normal
    defn- (not inlined) is what makes that seam usable."
   [config slug]
-  (llm/wrapped-backend (:model config)
+  (llm/wrapped-backend (:us.whitford.llm-repl/model config)
                        {:priority :priority/normal
                         :slug     (str "repl-" (name slug))}))
 
@@ -350,7 +350,7 @@
   [config slug]
   (fn [tape]
     (binding [*tool-depth* (inc *tool-depth*)]
-      (let [{:keys [defs name->kw]} (tool-wire (session-tools (:tools config)))
+      (let [{:keys [defs name->kw]} (tool-wire (session-tools (:us.whitford.llm-repl/tools config)))
             backend     (session-backend config slug)
             turn        (count tape)
             base        (-> (build-request config slug tape)
@@ -412,7 +412,7 @@
    (library-contract § 3 — the open slot)."
   [config slug]
   (let [plain (plain-complete config slug)]
-    (if (:tools config)
+    (if (:us.whitford.llm-repl/tools config)
       (let [tooled (tool-complete config slug)]
         (fn [tape]
           (if (pos? *tool-depth*)

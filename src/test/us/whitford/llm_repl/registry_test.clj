@@ -59,7 +59,7 @@
 
 (deftest edn-violations-clean-test
   (testing "nil for a clean, all-EDN session map"
-    (is (nil? (registry/edn-violations {:s {:tape [] :config {:model :m} :turns 0}})))))
+    (is (nil? (registry/edn-violations {:s {:tape [] :config {:us.whitford.llm-repl/model :m} :turns 0}})))))
 
 (deftest edn-violations-detects-fn-test
   (let [v (registry/edn-violations {:s {:complete-fn (fn [] :nope)}})]
@@ -125,9 +125,9 @@
 (def ^:private two-sessions
   {:parent {:slug :parent :tape [{:role :user :text "BODY-ALPHA"}
                                  {:role :assistant :text "BODY-BETA"}]
-            :config {:model "m1" :preamble? true} :turns 1}
+            :config {:us.whitford.llm-repl/model "m1" :us.whitford.llm-repl/preamble? true} :turns 1}
    :child  {:slug :child :tape [{:role :user :text "BODY-GAMMA"}]
-            :config {:model "m2"} :turns 0
+            :config {:us.whitford.llm-repl/model "m2"} :turns 0
             :forked-from :parent :forked-at 2}})
 
 (deftest index-drops-bodies-keeps-edges-test

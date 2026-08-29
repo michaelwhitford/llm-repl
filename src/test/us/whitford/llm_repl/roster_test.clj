@@ -99,31 +99,31 @@
 (deftest prompt-chain-resolution
   (with-redefs [roster/config (fn [] chain-cfg)]
     (testing "session layer wins"
-      (is (= "sess-sys" (roster/resolve-system-prompt {:model :m :system "sess-sys"})))
-      (is (= "sess-or" (roster/resolve-orientation {:model :m :orientation "sess-or"})))
-      (is (= "sess-pre" (roster/resolve-preamble {:model :m :preamble "sess-pre"}))))
+      (is (= "sess-sys" (roster/resolve-system-prompt {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/system "sess-sys"})))
+      (is (= "sess-or" (roster/resolve-orientation {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/orientation "sess-or"})))
+      (is (= "sess-pre" (roster/resolve-preamble {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/preamble "sess-pre"}))))
     (testing "model layer"
-      (is (= "model-sys" (roster/resolve-system-prompt {:model :m}))))
+      (is (= "model-sys" (roster/resolve-system-prompt {:us.whitford.llm-repl/model :m}))))
     (testing "provider layer"
-      (is (= "prov-orient" (roster/resolve-orientation {:model :m}))))
+      (is (= "prov-orient" (roster/resolve-orientation {:us.whitford.llm-repl/model :m}))))
     (testing "root layer"
-      (is (= "root-pre" (roster/resolve-preamble {:model :m})))
-      (is (= "root-sys" (roster/resolve-system-prompt {:model :unknown})))
-      (is (= "root-orient" (roster/resolve-orientation {:model :unknown}))))))
+      (is (= "root-pre" (roster/resolve-preamble {:us.whitford.llm-repl/model :m})))
+      (is (= "root-sys" (roster/resolve-system-prompt {:us.whitford.llm-repl/model :unknown})))
+      (is (= "root-orient" (roster/resolve-orientation {:us.whitford.llm-repl/model :unknown}))))))
 
 (deftest prompt-chain-explicit-none-stops
   (with-redefs [roster/config (fn [] chain-cfg)]
-    (is (nil? (roster/resolve-system-prompt {:model :m :system false})))
-    (is (nil? (roster/resolve-system-prompt {:model :m :system nil}))
+    (is (nil? (roster/resolve-system-prompt {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/system false})))
+    (is (nil? (roster/resolve-system-prompt {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/system nil}))
         "present-nil ≡ explicitly none — uniform with the preamble semantics")
-    (is (nil? (roster/resolve-orientation {:model :m :orientation ""})))))
+    (is (nil? (roster/resolve-orientation {:us.whitford.llm-repl/model :m :us.whitford.llm-repl/orientation ""})))))
 
 (deftest prompt-chain-file-values-render
   ;; the anima shape: a whole layer replaced by a nucleus prompt FILE
   (let [f (tmp-edn "λ prompt(x). lambda-notation prompt text\n")]
     (with-redefs [roster/config (fn [] {:system-prompt {:file (.getPath f)}})]
       (is (= "λ prompt(x). lambda-notation prompt text"
-             (roster/resolve-system-prompt {:model :m}))
+             (roster/resolve-system-prompt {:us.whitford.llm-repl/model :m}))
           "slurped ∧ trailing-whitespace trimmed"))))
 
 ;; ── D10: the source is data, init! is the read, require is inert ────────────

@@ -397,7 +397,7 @@
    First-PRESENT wins (a level REPLACES, never concatenates). Absent key ≡
    inherit upward; present nil ∨ `false` ∨ blank ≡ explicitly NONE (stops
    the chain). Returns the rendered string or nil."
-  [{:keys [model] :as session-config} sk mk pk rk]
+  [{:us.whitford.llm-repl/keys [model] :as session-config} sk mk pk rk]
   (let [cfg  (config)
         m    (get-in cfg [:models model])
         p    (get-in cfg [:providers (:model/provider m)])
@@ -410,29 +410,33 @@
       (render-prompt rk v))))
 
 (defn resolve-preamble
-  "The boot-seed layer: session :preamble > model :model/preamble >
-   provider :provider/preamble > root :preamble. Rendered string or nil."
+  "The boot-seed layer: session ::repl/preamble (D11 qualified) > model
+   :model/preamble > provider :provider/preamble > root :preamble.
+   Rendered string or nil."
   [session-config]
-  (resolve-chained session-config :preamble :model/preamble :provider/preamble :preamble))
+  (resolve-chained session-config :us.whitford.llm-repl/preamble
+                   :model/preamble :provider/preamble :preamble))
 
 (defn resolve-system-prompt
-  "The system-voice layer: session :system (the existing session knob) >
-   model :model/system-prompt > provider :provider/system-prompt > root
-   :system-prompt. Replaces completion's baked \"You are a precise
+  "The system-voice layer: session ::repl/system (the session knob, D11
+   qualified) > model :model/system-prompt > provider :provider/system-prompt
+   > root :system-prompt. Replaces completion's baked \"You are a precise
    assistant.\" (that text now lives in builtin-defaults, bottom of the
    chain). Rendered string or nil."
   [session-config]
-  (resolve-chained session-config :system :model/system-prompt :provider/system-prompt :system-prompt))
+  (resolve-chained session-config :us.whitford.llm-repl/system
+                   :model/system-prompt :provider/system-prompt :system-prompt))
 
 (defn resolve-orientation
   "The environment-orientation layer ({slug} template, applied by
-   completion/with-tools-system iff :tools rides the wire): session
-   :orientation > model :model/orientation > provider :provider/orientation
-   > root :orientation. Replaces completion's `tools-system` def (the
-   template now lives in builtin-defaults, bottom of the chain). Rendered
-   string or nil."
+   completion/with-tools-system iff ::repl/tools rides the wire): session
+   ::repl/orientation (D11 qualified) > model :model/orientation > provider
+   :provider/orientation > root :orientation. Replaces completion's
+   `tools-system` def (the template now lives in builtin-defaults, bottom
+   of the chain). Rendered string or nil."
   [session-config]
-  (resolve-chained session-config :orientation :model/orientation :provider/orientation :orientation))
+  (resolve-chained session-config :us.whitford.llm-repl/orientation
+                   :model/orientation :provider/orientation :orientation))
 
 (defn with-preamble
   "λ prompt: glue `preamble` to the top of `system`. GENERIC — no knowledge of
