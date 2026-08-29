@@ -105,4 +105,6 @@ Read `memories/probe-hygiene-tools-armed` FIRST.
 → `queue.md` (prospective memory). Nothing in progress. Strictness arc
 DONE 6/6 — the tag gate is clear. Front ≡ ⚪ anima-re-migration (human ∧
 anima's repo: D11 keys · D10 inert config · D8 error maps), then the
-small seam tickets (open-defaults-create-only · trace-capture-hook).
+small seam tickets (open-defaults-create-only · trace-capture-hook ·
+tool-loop-knobs — human principle: constants → config, flexibility is
+the point).
