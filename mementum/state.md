@@ -52,34 +52,32 @@ source; entrypoints read the chain explicitly; `init!`/`reload-config!`/
 Remaining: open-defaults-create-only · trace-capture-hook. Trap ≡
 memories/ambient-config-leaks-into-embedding-hosts.
 
-**Human moves open:** v0.3.0 tag · the
-projection's TUI pass (Tab: right tape, no stale pane — agents have no TTY).
-Container core CURRENT (send-ring δ'd live); rebuild ≡ `./docker/container.sh`
-(committed — build→replace→eval-gate); no daemon. Stale cores refuse.
+**Human moves open:** v0.3.0 tag (gate CLEAR) · anima re-migration (D11
+keys ⊕ D10 ⊕ D8 — queue front) · the projection's TUI pass (Tab: right
+tape, no stale pane — agents have no TTY). Container core STALE (predates
+D10/D11); rebuild ≡ `./docker/container.sh` (build→replace→eval-gate); no
+daemon. Stale cores refuse.
 
-**Next pickup:** the STRICTNESS ARC — full state audit 2026-08-29
-(`knowledge/state-audit.md`: ~34 STRICT · ~13 MIXED · ~5 LOOSE; looseness
-clusters at S2 SEAMS, worst ≡ the tap swallow — the audit channel itself
-fails silently). **The v0.3.0 tag WAITS on this arc** (human) — ALL DESIGN
-RATIFIED (D7-amend `unset!` · D8 `defcommand` · D9 boundary-idiom rule:
-data only where the return is READ, discarded-return side effects THROW,
-throws are model-safe via tools.clj:89). SHIPPED 2026-08-29:
-✅ tap-failure-receipts (`run-tap!` disarm-on-throw ⊕ `:tap-disarmed`
-receipt) · ✅ daemon-state-hygiene (atomic `write-state!`, corrupt →
-`.corrupt` aside ⊕ loud, `clean-state!` reports failures, ONE
-`read-port-file`) · ✅ term-state-chokepoint (`update-state!` ⊕ closed
-`state-keys`, 13 sites rewired, main's reaches → named mutators, term's
-first test ns) · ✅ registration-guards (guarded `register-tool!` over
-upstream register!, `register-manual-ns!` find-ns gate, `event!` EDN
-assert) · ✅ config-unset-semantics (`unset!` release valve; per-key-class
-RATIFIED in-build: prompt keys dissoc, seeded knobs re-seed from live
-default-config); suite 210/709. ONE BUILD ticket remains:
-manual-malli-schemas (D8 RATIFIED: `defcommand` defn-grammar
-attr-map, guard/errors pure fn, :catn, opts ← config-schema; guardrails
-rejected → memories/guardrails-is-not-a-boundary-guard).
+**STRICTNESS ARC COMPLETE 6/6 (2026-08-29) — THE v0.3.0 TAG GATE IS
+CLEAR** (tag ≡ human move). Final tranche, one session:
+✅ manual-malli-schemas (D8: `guard/errors` pure fn ⊕ `defcommand`
+defn-grammar, 16 conversions, coverage table-test over (manual) itself —
+a future command cannot ship unguarded; kondo needs the macroexpand HOOK,
+not :lint-as — D8 amended in-build) ⊕ ✅ **D11 ratified ∧ built same
+session**: session config keys → `:us.whitford.llm-repl/*` (the :config
+map ESCAPES via snapshot; collision-proof vs ANY keyword; api spells
+`::model`, prompt users `::tools`, hosts `::repl/model`; file root ∧
+:repl/* ∧ index ∧ tape keys stay bare — deferred by human rule).
+BREAKING: v0.2.0 key spellings dead; ⚪ anima-re-migration queued (the
+ratified step-function). Earlier tranche: ✅ tap-failure-receipts ·
+✅ daemon-state-hygiene · ✅ term-state-chokepoint · ✅ registration-guards
+· ✅ config-unset-semantics — full ledgers ≡ queue.md § complete. Suite
+**227/780** bb ∧ JVM twins. New traps: memories/
+jvm-macroexpand-wraps-macro-throws (CompilerException wrap, JVM-only).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
 Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
-`/work` — **NOT this repo**. Probing a model through it? Read
+`/work` — **NOT this repo**; core PREDATES D11/D10 (rebuild ≡
+`./docker/container.sh` before probing). Read
 `memories/probe-hygiene-tools-armed` FIRST.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
@@ -104,5 +102,7 @@ Instrument LIVE: container @ 127.0.0.1:7899, mount `~/llm-repl-work` →
 
 ## Queue
 
-→ `queue.md` (prospective memory). Nothing in progress. Front ≡ the
-strictness arc (tag gate), 5/6 done: manual-malli-schemas is the last.
+→ `queue.md` (prospective memory). Nothing in progress. Strictness arc
+DONE 6/6 — the tag gate is clear. Front ≡ ⚪ anima-re-migration (human ∧
+anima's repo: D11 keys · D10 inert config · D8 error maps), then the
+small seam tickets (open-defaults-create-only · trace-capture-hook).
