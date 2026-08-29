@@ -57,6 +57,13 @@ re-migration (D11 keys ⊕ D10 ⊕ D8 — queue front) · the projection's TUI
 pass (Tab: right tape, no stale pane — agents have no TTY). Container
 REBUILT on the D8/D10/D11 core (human, 2026-08-29); no daemon.
 
+**Use case (human, 2026-08-29):** PRIMARY ≡ a smarter model drives a
+dumber model through the repl for testing — headless, TUI barely used.
+Weight accordingly: nREPL/eval ergonomics ∧ receipts-over-wire ∧
+manual/recipe surface > TUI polish (tui-left-pane-collapse PARKED in
+queue with findings; agent-recipe-page's eventual audience ≡ exactly
+this use case).
+
 **STRICTNESS ARC COMPLETE 6/6 (2026-08-29) — THE v0.3.0 TAG GATE IS
 CLEAR** (tag ≡ human move). Final tranche, one session:
 ✅ manual-malli-schemas (D8: `guard/errors` pure fn ⊕ `defcommand`
