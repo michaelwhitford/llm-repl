@@ -291,6 +291,38 @@ Amendments from the 2026-08-27 container session:
   bare dissoc there would mint new poison (`:model` absent ≡ NPE at the
   next send; `:tools` absent ≡ none, not default). One mental model either
   way: whatever would govern a FRESH session governs again.
+  AMENDED (2026-08-30, ratified — open-defaults-create-only): stickiness
+  has a second face. `open!` is get-or-create, and its opts merge into an
+  EXISTING session's config too — so a host that wants merely to SEED a
+  session (open it my way if it is new, touch nothing if it is live) had
+  to `snapshot` → check → `open!`, i.e. read-then-decide OUTSIDE the swap:
+  exactly the TOCTOU D2 removed internally, handed back to the caller.
+  The fix is an opts key, not a new command: **`:defaults`** — a session-
+  knob map merged on the CREATE branch ONLY, UNDER the call's own
+  overrides, INSIDE the `mutate!` fn (race-free where D2 lives); for an
+  existing session it is IGNORED, silently — that is the contract, not a
+  failure (the `:open!` receipt still fires on creation only, so the
+  transcript distinguishes the paths). Precedence on create:
+  `(default-config) < :defaults < opts`. Four rulings, so they are never
+  re-derived: (1) SCOPE — `eval!`/`bounce!`/`trampoline!`/`run-battery!`
+  delegate their whole opts map to `open!`, so `:defaults` rides their
+  schemas too and `(eval! :s {:defaults {::model :x}} probe)` is one
+  race-free get-or-create-and-send; `fork!`/`ab!` are EXCLUDED — a fork's
+  default already IS the parent's config, `:defaults` there would be a
+  second answer to a settled question. (2) NOT STORED — the seed is
+  consumed at creation, so `unset!` re-seeds from `(default-config)`, not
+  from the host's `:defaults` (no new session field; the re-seed law reads
+  the LIVE chain, and a creation-time seed is not a chain). (3) The key is
+  BARE (`:defaults`, not `::defaults`): it is ephemeral opts like
+  `:complete-fn`/`:xform`/`:at`, and D11 qualifies only what escapes via
+  snapshot — its VALUE is a fully-qualified knob map. The word collides
+  with `defcommand`'s attr-map `:defaults` (D8, generated-arity defaulting)
+  in the same form; kept anyway — the host-facing name wins, the macro key
+  is internal. (4) The value's schema is `roster/session-opts-schema`
+  itself, so a typo INSIDE `:defaults` teaches exactly like a typo beside
+  it; `:defaults` is declared at the COMMAND-opts layer (via `mu/merge`),
+  never in `session-opts-schema` — that schema is also the shape a
+  session's `:config` persists, and a create-time seed is not a knob.
 
 ### D8 — `defcommand`: the manual field grows schemas (ratified 2026-08-29)
 

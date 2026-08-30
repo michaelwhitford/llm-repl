@@ -41,6 +41,15 @@ drop! reset-all! snapshot sessions-list manual help use!¹ event!
   :repl/turns :repl/error :repl/bounces :repl/variants …`. A map carrying
   `:repl/id` identifies a command receipt (surfaces key off this — the
   structural replacement for v0.2.0's string sniffing).
+- `:defaults` (D7 amendment 2026-08-30) — an opts key on `open!` and the
+  drivers that delegate to it (`eval!` `bounce!` `trampoline!`
+  `run-battery!`; NOT `fork!`/`ab!`): a session-knob map applied on
+  CREATION only, under the call's own overrides
+  (`(default-config) < :defaults < opts`), ignored silently for a session
+  that already exists. This is the race-free seed a host wants instead of
+  `snapshot` → check → `open!` (that shape is a TOCTOU outside the
+  registry swap). Not stored: `unset!` re-seeds from the config chain, not
+  from `:defaults`.
 - `manual` ≡ `[{:name :arglists :summary :doc}]` compiled from `^:manual`
   metadata across `manual-namespaces*`. `help` returns a string (never
   prints). Hosts derive their facades (MCP, palettes) from `manual` only.
