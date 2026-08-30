@@ -2,7 +2,7 @@
 type: insight
 symbol: ❌
 title: measuring a model through this repl requires disarming :tools by hand
-related: [knowledge/self-eval.md, knowledge/container.md, memories/thinking-false-polarity]
+related: [knowledge/self-eval.md, knowledge/container.md, memories/thinking-false-polarity, memories/entry-point-decides-armedness]
 ---
 
 Pre-flight for the (later 🚫'd) extension-horizon pilot, 2026-08-28: the
@@ -21,7 +21,10 @@ Hygiene for any probe session on this instrument, all of it per-session and
 none of it default:
 
 ```clojure
-(repl/open! :probe {:tools nil :temperature 0 :thinking false :preamble? false})
+;; keys re-spelled for D11 (2026-08-30): v0.2.0's bare :tools/:temperature/…
+;; are DEAD — the closed session-opts schema rejects them now, teaching.
+(repl/open! :probe {::repl/tools nil ::repl/temperature 0
+                    ::repl/thinking false ::repl/preamble? false})
 ```
 
 `:tools nil` disarms (self-eval.md: the config-root twin makes armed-ness a

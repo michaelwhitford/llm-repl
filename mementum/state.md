@@ -36,7 +36,7 @@ stdout interleaved, nREPL shape). Suite now 210/709.
 **Knowledge:** `knowledge/design/` ≡ architecture ∧ library-contract ∧
 trace-durability. `knowledge/` ≡ container ∧ attach-topology ∧ self-eval ∧
 tui-design-rules ∧ wire-protocol ∧ compaction ∧ frames ∧ fan-out-lineage ∧
-upstream/escapement. Traps ≡ `memories/` (25 pages, one insight each — grep
+upstream/escapement. Traps ≡ `memories/` (26 pages, one insight each — grep
 before re-deriving; recall > re-derivation).
 
 **First consumer landed 2026-08-29:** anima migrated to the library
@@ -49,8 +49,17 @@ library INERT at require, config source ≡ DATA
 installs nothing on failure), `reload-config!` re-folds from the CURRENT
 source; entrypoints read the chain explicitly; `init!`/`reload-config!`/
 `config-sources` promoted to library-contract § 6; PRE-RC gate CLOSED).
-Remaining: open-defaults-create-only · trace-capture-hook. Trap ≡
-memories/ambient-config-leaks-into-embedding-hosts.
+✅ **open-defaults-create-only** (2026-08-30, D7 amendment ratified before
+code): `:defaults` ≡ opts key seeding the CREATE branch only, under the
+call's own overrides, inside the mutate! fn — the host's
+snapshot→check→open! TOCTOU is gone; rides eval!/bounce!/trampoline!/
+run-battery! (fork!/ab! excluded), NOT stored (unset! still re-seeds from
+the chain), value schema ≡ session-opts-schema so a typo inside teaches.
+Suite **231/799** bb ∧ JVM. Remaining: trace-capture-hook. Traps ≡
+memories/ambient-config-leaks-into-embedding-hosts ∧
+memories/entry-point-decides-armedness (D10 split armed-ness by ENTRY
+POINT — `bb -e` inert vs `bb llm-repl` chain-read; assert
+`(::repl/tools (default-config))` at probe start).
 
 **Human moves open:** v0.3.0 tag (gate CLEAR, CI green on main) · anima
 re-migration (D11 keys ⊕ D10 ⊕ D8 — queue front) · the projection's TUI
@@ -78,14 +87,15 @@ BREAKING: v0.2.0 key spellings dead; ⚪ anima-re-migration queued (the
 ratified step-function). Earlier tranche: ✅ tap-failure-receipts ·
 ✅ daemon-state-hygiene · ✅ term-state-chokepoint · ✅ registration-guards
 · ✅ config-unset-semantics — full ledgers ≡ queue.md § complete. Suite
-**227/780** bb ∧ JVM twins. New traps: memories/
+**227/780** at arc close (231/799 now — see :defaults above). New traps: memories/
 jvm-macroexpand-wraps-macro-throws (CompilerException wrap, JVM-only).
 Pushed 2026-08-29: CI GREEN (twin suite ∧ kondo WITH the hook — the
 gitignore near-miss verified dead in the pipeline that would have hit it).
 agent-recipe-page DEPRIORITIZED to queue bottom (design still settling).
 Instrument LIVE ∧ CURRENT: container rebuilt on D8/D10/D11 core @
 127.0.0.1:7899, mount `~/llm-repl-work` → `/work` — **NOT this repo**.
-Read `memories/probe-hygiene-tools-armed` FIRST.
+Read `memories/probe-hygiene-tools-armed` ∧ `entry-point-decides-armedness`
+FIRST — armed-ness is a fact about the PROCESS, not the code.
 
 ## Live invariants (violable tomorrow — the rest live in the design)
 
@@ -101,7 +111,8 @@ Read `memories/probe-hygiene-tools-armed` FIRST.
 - NO nucleus in the repo (AGENTS.md λ scope); THIS AGENTS.md stays UNTRACKED.
 - nREPL ≡ unauthenticated eval — `:bind "0.0.0.0"` only behind a wall.
 - Lint: `.clj-kondo/config.edn` PINS its levels (a home config merges UNDER
-  it). Config stickiness: open! persists; absence ≠ reset.
+  it). Config stickiness: open! persists; absence ≠ reset; `unset!` ≡ the
+  release valve, `:defaults` ≡ the creation-only seed (never stored).
 - Knowledge scope: mementum here ≡ llm-repl the INSTRUMENT; findings ABOUT
   models belong to anima. This llm-repl is BLACK-BOX (HTTP, text in/out);
   verbum's same-named llm-repl attaches as a TENSOR — forward-pass questions
@@ -112,6 +123,7 @@ Read `memories/probe-hygiene-tools-armed` FIRST.
 → `queue.md` (prospective memory). Nothing in progress. Strictness arc
 DONE 6/6 — the tag gate is clear. Front ≡ ⚪ anima-re-migration (human ∧
 anima's repo: D11 keys · D10 inert config · D8 error maps), then the
-small seam tickets (open-defaults-create-only · trace-capture-hook ·
-tool-loop-knobs — human principle: constants → config, flexibility is
-the point).
+remaining seam tickets (trace-capture-hook · tool-loop-knobs — human
+principle: constants → config, flexibility is the point) ⊕ the new
+⚪ plain-loop-quit-synonyms (human ruling wanted: widen the grammar, or
+rule that agents send `:q`).
