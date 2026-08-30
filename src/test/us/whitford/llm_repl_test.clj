@@ -160,6 +160,80 @@
   (is (= 1 (count (filter #(= :open! (:kind %)) @registry/events*)))
       "only ONE open! event fired — the reopen was a merge, not a creation"))
 
+(deftest open!-defaults-seed-creation-only-test
+  (testing "`:defaults` seeds a session this call CREATES — under the call's
+            own overrides, over (default-config): the precedence is
+            (default-config) < :defaults < opts"
+    (repl/open! :dfl {:defaults {::repl/temperature 0.1 ::repl/thinking true}})
+    (is (= 0.1 (get-in (repl/snapshot :dfl) [:config ::repl/temperature])))
+    (is (true? (get-in (repl/snapshot :dfl) [:config ::repl/thinking])))
+    (repl/open! :dfl2 {:defaults {::repl/temperature 0.1} ::repl/temperature 0.9})
+    (is (= 0.9 (get-in (repl/snapshot :dfl2) [:config ::repl/temperature]))
+        "the call's own override outranks its defaults"))
+  (testing "…and is IGNORED, silently, for a session that already exists —
+            THE point of the key (a host seeds a new session without
+            stomping a live one, and without the snapshot→check→open!
+            TOCTOU that shape would otherwise force outside the swap)"
+    (repl/open! :dfl {:defaults {::repl/temperature 0.99}})
+    (is (= 0.1 (get-in (repl/snapshot :dfl) [:config ::repl/temperature]))
+        "the live session's config is untouched")
+    (is (= 1 (count (filter #(and (= :open! (:kind %)) (= :dfl (:slug %))) @registry/events*)))
+        "still ONE creation receipt — the transcript distinguishes the paths"))
+  (testing "plain overrides keep their D7 stickiness on an existing session —
+            :defaults adds a creation-only path, it does not change open!"
+    (repl/open! :dfl {::repl/temperature 0.5})
+    (is (= 0.5 (get-in (repl/snapshot :dfl) [:config ::repl/temperature]))))
+  (testing "the key itself never reaches :config, and an empty/absent
+            :defaults is exactly today's behavior"
+    (is (not (contains? (:config (repl/snapshot :dfl)) :defaults)))
+    (repl/open! :dfl3 {:defaults {}})
+    (repl/open! :dfl4)
+    (is (= (repl/default-config) (:config (repl/snapshot :dfl3))))
+    (is (= (repl/default-config) (:config (repl/snapshot :dfl4))))))
+
+(deftest defaults-schema-teaches-inside-and-out-test
+  (testing "the VALUE is session-opts-schema itself, so a typo INSIDE
+            :defaults teaches exactly like a typo beside it (D8) — and the
+            rejected call creates NOTHING"
+    (let [e (:repl/error (repl/open! :bad {:defaults {::repl/temp 1}}))]
+      (is (= 'open! (:command e)))
+      (is (str/includes? (pr-str (:errors e)) "disallowed key")))
+    (is (nil? (repl/snapshot :bad)) "a schema reject never reaches the registry")
+    (is (str/includes? (pr-str (get-in (repl/open! :bad2 {:defaultz {}}) [:repl/error :errors]))
+                       "disallowed key")
+        "and the misspelled KEY is still caught by the closed opts map")))
+
+(deftest defaults-ride-the-delegating-drivers-test
+  (testing "eval!/bounce!/trampoline!/run-battery! hand their whole opts map
+            to open!, so :defaults makes get-or-create-and-send ONE race-free
+            call"
+    (repl/eval! :dd "hello" {:complete-fn stub-complete
+                             :defaults    {::repl/temperature 0.25}})
+    (is (= 0.25 (get-in (repl/snapshot :dd) [:config ::repl/temperature])))
+    (repl/eval! :dd "again" {:complete-fn stub-complete
+                             :defaults    {::repl/temperature 0.75}})
+    (is (= 0.25 (get-in (repl/snapshot :dd) [:config ::repl/temperature]))
+        "second send found the session alive — the seed is ignored"))
+  (testing "fork!/ab! are deliberately EXCLUDED: a fork's default already IS
+            the parent's config, so :defaults there would be a second answer
+            to a settled question — their closed schemas say so"
+    (repl/open! :dp {})
+    (is (= 'fork! (get-in (repl/fork! :dp :dc {:defaults {}}) [:repl/error :command])))
+    (is (= 'ab! (get-in (repl/ab! :dp {:a {}} "probe" {:defaults {}})
+                        [:repl/error :command])))))
+
+(deftest defaults-are-not-stored-so-unset!-reseeds-from-the-chain-test
+  (testing "the seed is CONSUMED at creation (no new session field): unset!
+            re-seeds from the live (default-config), never from a past
+            call's :defaults — whatever governs a FRESH session governs
+            again (D7 amendment 2026-08-29, unchanged by this one)"
+    (repl/open! :ds {:defaults {::repl/model :seeded/not-chain}})
+    (is (= :seeded/not-chain (get-in (repl/snapshot :ds) [:config ::repl/model])))
+    (repl/unset! :ds ::repl/model)
+    (is (= (::repl/model (repl/default-config))
+           (get-in (repl/snapshot :ds) [:config ::repl/model]))
+        "the chain governs, not the seed")))
+
 (deftest sessions-list-shape-lock-test
   (testing "PUBLIC surface (library-contract): a VECTOR of compact maps, no
             message bodies — the shape is registry/index's, flattened here,

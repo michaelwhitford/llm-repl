@@ -166,9 +166,23 @@
   llm/session-opts-schema)
 
 (def ^:private EvalOpts
-  "Config overrides ⊕ the injected-IO seam (library-contract § 3)."
+  "Config overrides ⊕ the injected-IO seam (library-contract § 3) ⊕ the
+   creation-only seed (D7 amendment 2026-08-30).
+
+   `:defaults` is declared HERE and never in `session-opts-schema`: that
+   schema is also the shape a session's `:config` PERSISTS, and a create-time
+   seed is not a knob. Its VALUE is that schema, so a typo INSIDE `:defaults`
+   teaches exactly like a typo beside it. Bare (not `::defaults`) by D11
+   scope — ephemeral opts, never escapes via `snapshot`. It rides EvalOpts
+   rather than open!'s own schema because `eval!`/`bounce!`/`trampoline!`/
+   `run-battery!` delegate their whole opts map to `open!`, which makes
+   `(eval! :s {:defaults {::model :x}} probe)` one race-free
+   get-or-create-and-send. `fork!`/`ab!` are deliberately EXCLUDED (a fork's
+   default already IS the parent's config)."
   (mu/merge llm/session-opts-schema
-            [:map [:complete-fn {:optional true} ifn?]]))
+            [:map
+             [:complete-fn {:optional true} ifn?]
+             [:defaults    {:optional true} llm/session-opts-schema]]))
 
 (def ^:private BatteryOpts
   "EvalOpts ⊕ :xform (the rf→rf preprocessing slot)."
@@ -217,18 +231,33 @@
    no read-then-decide-then-store gap for a concurrent `open!`/`eval!` on the
    same slug to land in unnoticed. Creation is detected from the [old new]
    pair (`old` lacked the slug ⟺ this call created it), never from a stale
-   local `existing` check."
-  {:manual   "Get or create a session. Options set its model, system, temperature."
+   local `existing` check.
+
+   `opts` also accepts **`:defaults`** — a knob map applied ONLY when this
+   call CREATES the session (D7 amendment 2026-08-30). Precedence on create:
+   `(default-config) < :defaults < opts`; for a session that already exists
+   it is IGNORED, silently — that is the contract, not a failure (the
+   `:open!` receipt still fires on creation only, so the transcript
+   distinguishes the two paths). It exists because `open!`'s plain merge
+   also lands on a LIVE session: a host wanting 'seed it my way if it is
+   new, touch nothing if it is running' otherwise had to `snapshot` → check
+   → `open!`, i.e. read-then-decide OUTSIDE the swap — the exact TOCTOU D2
+   removed internally, handed back to the caller. Applied inside the
+   `mutate!` fn, so it is race-free where D2 lives. NOT stored: the seed is
+   consumed at creation, so `unset!` re-seeds from the live
+   `(default-config)` chain, never from a past call's `:defaults`."
+  {:manual   "Get or create a session. Options set its model, system, temperature; :defaults seeds creation only."
    :args     [:catn [:slug Slug] [:opts [:? OpenOpts]]]
    :defaults {opts {}}}
   [slug opts]
   (let [overrides (select-keys opts config-keys)
+         seeds     (select-keys (:defaults opts) config-keys)
          f         (fn [reg]
                      (if (contains? reg slug)
                        (update-in reg [slug :config] merge overrides)
                        (assoc reg slug {:slug       slug
                                         :tape       []
-                                        :config     (merge (default-config) overrides)
+                                        :config     (merge (default-config) seeds overrides)
                                         :turns      0
                                         :created-at (System/currentTimeMillis)})))
          [old new] (registry/mutate! f)]

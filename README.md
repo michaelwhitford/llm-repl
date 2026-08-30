@@ -101,6 +101,10 @@ renders that one compile:
 
 ```clojure
 (open! :s)                     ; get or create a session (opts: model/system/…)
+(open! :s {:defaults {…}})     ; …seeding config ONLY if this call CREATES it
+                               ;   (a live session is left untouched — the
+                               ;    race-free alternative to check-then-open!;
+                               ;    rides eval!/bounce!/trampoline!/battery too)
 (eval! :s "hello")             ; chat: ONE turn, tape advances
 (bounce! :s "probe")           ; ONE input, tape UNCHANGED
 (trampoline! :s ["a" "b" "c"]) ; MANY inputs off the fixed tape; nothing saved
