@@ -49,8 +49,11 @@ complete it. Cost RE-PRICED against the code, not assumed
 (memories/llama-wire-is-ours-request-is-open): the wire is ours ∧ pure,
 Request is an OPEN map, `:backend-metadata` is the return slot ⇒ NO
 upstream release. The one hard boundary is **D4: `:complete-fn` returns
-TEXT**, so a distribution has no channel to the caller — ratification
-first, three options named in the ticket.
+TEXT**, so a distribution has no channel to the caller.
+**→ `knowledge/design/measurement-surface.md` (D12, PROPOSED 2026-08-31):
+option space, a recommendation, and 7 RULINGS WANTED — the human move
+that unblocks the whole arc. Nothing built; the wire half is
+runtime-verified against port 5100, the contract half is source-read.**
 
 **Use case (human, 2026-08-29), weight accordingly:** PRIMARY ≡ a smarter
 model drives a dumber model through the repl for testing — headless, TUI

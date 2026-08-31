@@ -2,7 +2,7 @@
 type: insight
 symbol: 💡
 title: new llama.cpp knobs need no escapement release — the wire seam is ours and Request is an open map
-related: [knowledge/design/architecture.md, knowledge/design/library-contract.md, memories/thinking-false-polarity, queue.md]
+related: [knowledge/design/architecture.md, knowledge/design/library-contract.md, knowledge/design/measurement-surface.md, memories/thinking-false-polarity, queue.md]
 ---
 
 Ingesting verbum's SUGGEST drop (logprobs · grammar · seed · raw mode ·
