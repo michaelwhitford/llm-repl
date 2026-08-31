@@ -61,8 +61,9 @@ memories/entry-point-decides-armedness (D10 split armed-ness by ENTRY
 POINT — `bb -e` inert vs `bb llm-repl` chain-read; assert
 `(::repl/tools (default-config))` at probe start).
 
-**Human moves open:** v0.3.0 tag (gate CLEAR, CI green on main) · anima
-re-migration (D11 keys ⊕ D10 ⊕ D8 — queue front) · the projection's TUI
+**Human moves open:** v0.3.0 tag (gate CLEAR, CI green on main) — anima
+now rides the D8/D10/D11 core (re-migrated 2026-08-30), so the tag has a
+consumer waiting on the jar · the projection's TUI
 pass (Tab: right tape, no stale pane — agents have no TTY). Container
 REBUILT on the D8/D10/D11 core (human, 2026-08-29); no daemon.
 
@@ -83,8 +84,8 @@ session**: session config keys → `:us.whitford.llm-repl/*` (the :config
 map ESCAPES via snapshot; collision-proof vs ANY keyword; api spells
 `::model`, prompt users `::tools`, hosts `::repl/model`; file root ∧
 :repl/* ∧ index ∧ tape keys stay bare — deferred by human rule).
-BREAKING: v0.2.0 key spellings dead; ⚪ anima-re-migration queued (the
-ratified step-function). Earlier tranche: ✅ tap-failure-receipts ·
+BREAKING: v0.2.0 key spellings dead; anima re-migrated 2026-08-30 (✅, the
+ratified step-function closed). Earlier tranche: ✅ tap-failure-receipts ·
 ✅ daemon-state-hygiene · ✅ term-state-chokepoint · ✅ registration-guards
 · ✅ config-unset-semantics — full ledgers ≡ queue.md § complete. Suite
 **227/780** at arc close (231/799 now — see :defaults above). New traps: memories/
@@ -117,13 +118,37 @@ FIRST — armed-ness is a fact about the PROCESS, not the code.
   models belong to anima. This llm-repl is BLACK-BOX (HTTP, text in/out);
   verbum's same-named llm-repl attaches as a TENSOR — forward-pass questions
   go THERE. Cost of missing it: one session (🚫 extension-horizon-pilot).
+- Two-tier membrane (verbum's SUGGEST drop states it as NON-asks, and they
+  are load-bearing): llm-repl carries TEXT ∧ DISTRIBUTIONS, nothing else.
+  No white-box (hidden states · per-layer · attention ≡ verbum's python
+  tier) · no reducer/oracle (grading lives with the caller: anima's kernel,
+  verbum's lambda_ast) · no fleet management (launching/pointing N servers
+  ≡ anima-side ops; the roster models aliases, not processes).
 
 ## Queue
 
 → `queue.md` (prospective memory). Nothing in progress. Strictness arc
-DONE 6/6 — the tag gate is clear. Front ≡ ⚪ anima-re-migration (human ∧
-anima's repo: D11 keys · D10 inert config · D8 error maps), then the
-remaining seam tickets (trace-capture-hook · tool-loop-knobs — human
-principle: constants → config, flexibility is the point) ⊕ the new
-⚪ plain-loop-quit-synonyms (human ruling wanted: widen the grammar, or
-rule that agents send `:q`).
+DONE 6/6 — the tag gate is clear. ✅ anima-re-migration CLOSED 2026-08-31
+(human's report: anima migrated to the current core 2026-08-30 — D11 keys
+· D10 inert config · D8 error maps; evidence lives in anima's repo). The
+step-function ran full circle: migrate → suggest → ingest → re-migrate.
+
+**NEW WORK FRONT — the measurement surface (2026-08-31):** verbum's
+SUGGEST drop ingested → six ⚪ entries (drop verbatim ≡ `git show
+dcfa1d6:SUGGEST.md`). A SECOND consumer (verbum's calculus-census ⊕
+anima's cartographer) wants llm-repl as the BEHAVIORAL-tier instrument:
+drive N llama.cpp servers (instruct AND base ggufs), run probe corpora,
+measure DISTRIBUTIONS (basin-equality ≡ KL-band on continuation
+distributions — byte-grain is the wrong gate). The session plane audited
+READY; what's missing is measurement. Priority per the drop:
+⚪ logprobs-surface (P1, load-bearing) · ⚪ sampling-spec-knobs (P3, seed ≡
+reproducibility gate) · ⚪ server-provenance (P5) make it RECORDABLE;
+⚪ grammar-passthrough (P2) ∧ ⚪ raw-completion-mode (P4) complete it;
+⚪ per-eval-caps (P6) minor. Cost re-priced by reading the code, NOT
+assumed — memories/llama-wire-is-ours-request-is-open: the wire is ours
+(`llama-wire`, pure) ∧ escapement's Request is an OPEN map ∧ `Response
+:backend-metadata` is the modeled return slot ⇒ no upstream release for
+any of them. The one HARD boundary is D4: `:complete-fn` returns TEXT,
+so distributions have no channel to the caller — a ratification, not a
+wire problem. Then the older seam tickets (trace-capture-hook ·
+tool-loop-knobs) ⊕ ⚪ plain-loop-quit-synonyms (human ruling wanted).
