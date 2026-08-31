@@ -42,7 +42,9 @@ jobs:
           curl -fsSL -o /tmp/install-bb \
             https://raw.githubusercontent.com/babashka/babashka/master/install
           chmod +x /tmp/install-bb
-          sudo /tmp/install-bb
+          # PINNED (see docker/Dockerfile): a release must be built by a
+          # known runtime — the jar's tests gate the deploy.
+          sudo /tmp/install-bb --version 1.13.220
           bb --version
 
       - name: Cache Clojure dependencies

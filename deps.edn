@@ -16,7 +16,14 @@
   :llm-repl {:main-opts ["-m" "us.whitford.llm-repl.main"]}
   ;; D6 twin: `bb test` ≡ `clojure -M:run-tests` — same suite, both runtimes
   ;; run THIS ns's -main (src/test/us/whitford/llm_repl/test_runner.clj).
+  ;; --enable-native-access: bb has babashka.ffi BUILT IN; the JVM twin gets
+  ;; the same API from the io.github.babashka/ffi git dep over
+  ;; java.lang.foreign (JDK 22+), which REFUSES native access without this
+  ;; flag on JDK 24+. Source parity is total, launch parity is not — this
+  ;; line is the whole asymmetry, and it lives here so the twin cannot
+  ;; diverge quietly the day FFI enters the suite.
   :run-tests {:extra-paths ["src/test"]
+              :jvm-opts    ["--enable-native-access=ALL-UNNAMED"]
               :main-opts   ["-m" "us.whitford.llm-repl.test-runner"]}
   ;; Build via tools.build — see build.clj.  clojure -T:build jar | install
   :build   {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}}

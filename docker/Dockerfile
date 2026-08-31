@@ -31,7 +31,12 @@
 #   Config is NEVER baked into the image (the nucleus/licensing boundary
 #   lives in the mounted config, outside the repo and outside the image).
 
-FROM ghcr.io/babashka/babashka:latest
+# PINNED, deliberately. `:latest` made the instrument's runtime a function of
+# WHEN you last rebuilt — it silently adopted 1.13.220 (and its new
+# babashka.ffi) the moment the tag moved. The repo is authoritative, the
+# machine is irrelevant — same rule as .clj-kondo/config.edn pinning its
+# levels. Bump this line on purpose, after the release has settled.
+FROM ghcr.io/babashka/babashka:1.13.220
 
 # bb is the RUNTIME, but dependency RESOLUTION (deps.clj → tools.deps) is a
 # JVM program — maven deps (escapement) cannot warm without `java`. Keep a
@@ -39,8 +44,15 @@ FROM ghcr.io/babashka/babashka:latest
 # config-driven re-resolve at runtime degrades gracefully instead of
 # crashing. (~200MB — the resilient trade over a fragile multi-stage
 # cache-copy whose mtime staleness checks could demand java anyway.)
+#
+# libsqlite3-0: babashka.ffi's SQLite wrapper (babashka/ffi-sqlite3) dlopens
+# the SYSTEM library — and this base image ships none (verified 2026-08-31:
+# no dpkg package, no libsqlite3.so anywhere on the aarch64 image). A desktop
+# or a GitHub runner has one because half of Ubuntu depends on it; a minimal
+# image does not. Without this line the failure is a runtime load-library
+# throw on the first measurement write, far from its cause.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends default-jre-headless \
+    && apt-get install -y --no-install-recommends default-jre-headless libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Unprivileged user. Armed sessions eval with full power (tools.clj:

@@ -1,6 +1,10 @@
 {;; llm-repl runs under babashka FIRST (fast startup ≡ "as easy as starting a
  ;; clojure repl"); the JVM (deps.edn) is the compatible superset. Escapement
  ;; is bb-clean except its fulcro webui — which this app does not use.
+ ;; The FLOOR (the image ∧ CI pin the EXACT version). 1.13.220 is the first
+ ;; build carrying `babashka.ffi` — a dev on an older bb gets a loud message
+ ;; naming the requirement instead of a mystery "namespace not found".
+ :min-bb-version "1.13.220"
  :paths ["src/main" "resources"]
  :deps  {com.fulcrologic/escapement {:mvn/version "1.0.2"}}
  :tasks
